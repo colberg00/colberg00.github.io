@@ -3,76 +3,166 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>02805 Social Graphs and Interactions — Group Project</title>
+<title>The Wiki-Link Files — 02805 Group Project</title>
+<meta name="description" content="An ongoing investigation into the Marvel wiki-link network. 02805 Social Graphs and Interactions, DTU.">
+<link rel="stylesheet" href="assets/theme.css">
 <style>
-  :root {
-    --text: #1a1a1a;
-    --muted: #5a5a5a;
-    --accent: #2b6cb0;
-    --rule: #e2e2e2;
-    --bg: #ffffff;
+  .hero{
+    text-align: center;
+    padding: 1rem 0 2.5rem;
   }
-  body {
-    margin: 0 auto;
-    padding: 2.5rem 1.25rem 4rem;
-    max-width: 46rem;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
-    line-height: 1.6;
-    color: var(--text);
-    background: var(--bg);
+  .hero h1{ font-size: 2.3rem; margin: 0 0 .6rem; }
+  .hero p{ color: var(--ink-soft); max-width: 40rem; margin: 0 auto; }
+  .agency-seal{
+    width: 84px; height: 84px; margin: 0 auto 1.2rem;
+    border: 3px solid var(--gold);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Special Elite', monospace;
+    color: var(--paper);
+    font-size: .62rem;
+    text-align: center;
+    line-height: 1.3;
+    letter-spacing: .05em;
+    background: radial-gradient(circle, #362c22, #1a1512 75%);
   }
-  header { border-bottom: 1px solid var(--rule); padding-bottom: 1.25rem; margin-bottom: 2rem; }
-  h1 { font-size: 1.9rem; margin: 0 0 .35rem; }
-  h2 { font-size: 1.2rem; margin: 2rem 0 .5rem; }
-  .subtitle { color: var(--muted); margin: 0; }
-  a { color: var(--accent); }
-  ul { padding-left: 1.2rem; }
-  .note { color: var(--muted); font-size: .9rem; }
-  footer { border-top: 1px solid var(--rule); margin-top: 3rem; padding-top: 1rem; font-size: .9rem; color: var(--muted); }
+  .case-list{ display: flex; flex-direction: column; gap: 1.25rem; }
+  .case-row{
+    display: grid;
+    grid-template-columns: 5.5rem 1fr auto;
+    gap: 1.25rem;
+    align-items: center;
+  }
+  .case-row .num{
+    font-family: 'Special Elite', monospace;
+    font-size: 1.6rem;
+    color: var(--red);
+    text-align: center;
+  }
+  .case-row .num small{ display:block; font-size: .55rem; color: var(--ink-faint); letter-spacing: .1em; }
+  .case-row h3{ margin: 0 0 .25rem; font-size: 1.15rem; }
+  .case-row p{ margin: 0; color: var(--ink-soft); font-size: .9rem; }
+  .case-status{
+    font-size: .72rem;
+    text-transform: uppercase;
+    letter-spacing: .1em;
+    padding: .3rem .6rem;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .case-status.open{ background: #3d5c3f; color: #eef5e8; }
+  .case-status.pending{ background: #6e5238; color: #e9dcbe; }
+  .roster{
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+    gap: 1.1rem;
+  }
+  .agent-card{
+    background: var(--paper-alt);
+    border: 1px dashed var(--line);
+    padding: 1rem 1.1rem;
+    border-radius: var(--radius);
+  }
+  .agent-card .role{ font-size: .75rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-faint); }
+  .agent-card .name{ font-family: 'Special Elite', monospace; font-size: 1.05rem; margin: .2rem 0; }
+  .links-list{ padding-left: 0; list-style: none; }
+  .links-list li{ margin-bottom: .5rem; }
+  .links-list li::before{ content: "▸ "; color: var(--red); }
 </style>
 </head>
-<body>
+<body class="wlf">
 
-<header>
-  <h1>Social Graphs and Interactions</h1>
-  <p class="subtitle">02805 &middot; Technical University of Denmark &middot; Group project page</p>
-</header>
+<div class="wlf-masthead">
+  <div class="wlf-masthead-inner">
+    <a class="wlf-brand" href="index.html">THE WIKI-LINK FILES
+      <small>An investigation unit &middot; est. 2026</small>
+    </a>
+    <nav class="wlf-nav">
+      <a href="index.html">Agency HQ</a>
+      <a href="posts/week1.html">Case No. 01</a>
+      <a href="https://github.com/colberg00/colberg00.github.io">Source</a>
+    </nav>
+  </div>
+</div>
 
-<main>
-  <h2>About this page</h2>
-  <p>
-    This is the website for our group project in 02805. It will hold the final
-    data story: the dataset we work with, the network we build from it, the
-    analysis of its structure, and the text analysis of the associated content.
-  </p>
+<main class="wlf-main">
 
-  <h2>Planned sections</h2>
-  <ul>
-    <li>Motivation &mdash; the dataset and why we chose it</li>
-    <li>Basic stats &mdash; how the data was collected and cleaned</li>
-    <li>Network analysis &mdash; degree distributions, communities, central nodes</li>
-    <li>Text analysis &mdash; TF-IDF, sentiment, and word clouds per community</li>
-    <li>Discussion &mdash; what worked, what did not, and what is missing</li>
-  </ul>
+  <section class="hero">
+    <div class="agency-seal">DTU<br>02805</div>
+    <h1>The Wiki-Link Files</h1>
+    <p>
+      A weekly case file on the hidden structure of Wikipedia's
+      <strong>Category:Marvel Comics superheroes</strong> — 303 characters,
+      one wiki-link network, and whatever <em>Social Graphs and Interactions</em>
+      teaches us to look for next.
+    </p>
+  </section>
 
-  <h2>Group members</h2>
-  <ul>
-    <li>Christian Colberg &mdash; s&lt;study number&gt;</li>
-    <li>&lt;name&gt; &mdash; s&lt;study number&gt;</li>
-    <li>&lt;name&gt; &mdash; s&lt;study number&gt;</li>
-  </ul>
+  <h2>Open case files</h2>
+  <div class="case-list">
 
-  <h2>Links</h2>
-  <ul>
-    <li><a href="https://github.com/colberg00/colberg00.github.io">Repository for this page</a></li>
+    <div class="wlf-card">
+      <div class="case-row">
+        <div class="num">01<small>Week 1</small></div>
+        <div>
+          <h3>The Marvel Manhunt</h3>
+          <p>
+            A mystery hero is hiding in the network. Guess characters, get told how
+            many wiki-links of separation you are from the target, and use degree
+            distributions, hubs, and a disconnected clique to hunt them down.
+          </p>
+        </div>
+        <a class="case-status open" href="posts/week1.html">Open file &rarr;</a>
+      </div>
+    </div>
+
+    <div class="wlf-card">
+      <div class="case-row">
+        <div class="num">02<small>Week 2</small></div>
+        <div>
+          <h3>&lt;next week's case&gt;</h3>
+          <p>To be opened once Week 2's tools are issued.</p>
+        </div>
+        <span class="case-status pending">Sealed</span>
+      </div>
+    </div>
+
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Field agents</h2>
+  <div class="roster">
+    <div class="agent-card">
+      <div class="role">Agent</div>
+      <div class="name">Christian Colberg</div>
+      <div class="wlf-muted">s&lt;study number&gt;</div>
+    </div>
+    <div class="agent-card">
+      <div class="role">Agent</div>
+      <div class="name">&lt;name&gt;</div>
+      <div class="wlf-muted">s&lt;study number&gt;</div>
+    </div>
+    <div class="agent-card">
+      <div class="role">Agent</div>
+      <div class="name">&lt;name&gt;</div>
+      <div class="wlf-muted">s&lt;study number&gt;</div>
+    </div>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Dossier &amp; references</h2>
+  <ul class="links-list">
+    <li><a href="https://github.com/colberg00/colberg00.github.io">Repository for this site</a></li>
     <li><a href="https://kurser.dtu.dk/course/02805">Course description (02805)</a></li>
+    <li><a href="https://sunelehmann.com/socialgraphs2026-web/weeks/week1.html">Week 1 assignment brief</a></li>
   </ul>
 
-  <p class="note">Placeholder content &mdash; sections are filled in as the project progresses.</p>
 </main>
 
-<footer>
-  Last updated September 2026.
+<footer class="wlf-footer">
+  Case files updated weekly &middot; 02805 Social Graphs and Interactions &middot; Technical University of Denmark
 </footer>
 
 </body>

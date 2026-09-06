@@ -1,0 +1,178 @@
+/* ============================================================
+   THE WIKI-LINK FILES — shared case-file / detective-agency theme
+   Used by index.html and every posts/*.html write-up.
+   ============================================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Special+Elite&family=Courier+Prime:wght@400;700&display=swap');
+
+:root{
+  --paper:        #ece2c8;
+  --paper-alt:     #e2d5ae;
+  --paper-dark:    #d3c193;
+  --board:         #8a6a4b;
+  --board-dark:    #6e5238;
+  --ink:           #2b2622;
+  --ink-soft:      #5b4f3f;
+  --ink-faint:     #8a7a62;
+  --red:           #9c2b21;
+  --red-dark:      #7a1f17;
+  --string:        #b3312c;
+  --blue-tack:     #2f5e6b;
+  --gold:          #a9822f;
+  --line:          #b7a377;
+  --shadow:        rgba(35, 28, 15, 0.35);
+  --radius: 3px;
+}
+
+*{ box-sizing: border-box; }
+
+html{ scroll-behavior: smooth; }
+
+body.wlf{
+  margin: 0;
+  background:
+    radial-gradient(ellipse at top left, rgba(255,255,255,0.08), transparent 60%),
+    var(--paper);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.015) 0px, rgba(0,0,0,0.015) 1px, transparent 1px, transparent 3px),
+    radial-gradient(ellipse at top left, rgba(255,255,255,0.08), transparent 60%);
+  color: var(--ink);
+  font-family: 'Courier Prime', 'Courier New', monospace;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wlf h1, .wlf h2, .wlf h3, .wlf .display{
+  font-family: 'Special Elite', 'Courier New', monospace;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+}
+
+.wlf a{ color: var(--red); text-decoration-thickness: 1px; }
+.wlf a:hover{ color: var(--red-dark); }
+
+/* ---------- masthead / nav ---------- */
+.wlf-masthead{
+  background: linear-gradient(180deg, #241e18, #1a1512);
+  color: var(--paper);
+  border-bottom: 6px double var(--gold);
+  padding: 1.6rem 1.25rem 1.4rem;
+}
+.wlf-masthead-inner{
+  max-width: 64rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem 1.5rem;
+}
+.wlf-brand{
+  font-family: 'Special Elite', monospace;
+  font-size: 1.55rem;
+  color: #f1e6c8;
+  text-decoration: none;
+  letter-spacing: .03em;
+}
+.wlf-brand small{
+  display: block;
+  font-family: 'Courier Prime', monospace;
+  font-size: .72rem;
+  color: #b8a26f;
+  letter-spacing: .18em;
+  margin-top: .15rem;
+}
+.wlf-nav{ display: flex; gap: 1.25rem; font-size: .85rem; }
+.wlf-nav a{ color: #d8c691; text-decoration: none; border-bottom: 1px dotted transparent; }
+.wlf-nav a:hover{ border-bottom-color: #d8c691; }
+
+/* ---------- layout ---------- */
+.wlf-main{ max-width: 64rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
+.wlf-board{
+  background:
+    repeating-linear-gradient(45deg, rgba(0,0,0,0.05) 0, rgba(0,0,0,0.05) 2px, transparent 2px, transparent 6px),
+    var(--board);
+  border-radius: 6px;
+  box-shadow: inset 0 0 40px rgba(0,0,0,.45), 0 6px 18px var(--shadow);
+  padding: 2rem 1.25rem;
+  margin: 2.5rem 0;
+}
+
+/* ---------- folder / index cards ---------- */
+.wlf-card{
+  background: var(--paper-alt);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 10px var(--shadow), 0 1px 0 rgba(255,255,255,.4) inset;
+  padding: 1.4rem 1.5rem;
+  position: relative;
+}
+.wlf-card + .wlf-card{ margin-top: 1.25rem; }
+.wlf-pin{
+  position: absolute;
+  top: -10px; left: 50%;
+  transform: translateX(-50%);
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #e35b52, var(--red-dark) 70%);
+  box-shadow: 0 3px 4px rgba(0,0,0,.5);
+}
+
+/* ---------- stamps & tags ---------- */
+.wlf-stamp{
+  display: inline-block;
+  font-family: 'Special Elite', monospace;
+  color: var(--red);
+  border: 3px solid var(--red);
+  border-radius: 4px;
+  padding: .15rem .6rem;
+  transform: rotate(-4deg);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-size: .8rem;
+  opacity: .85;
+}
+.wlf-case-no{
+  font-family: 'Special Elite', monospace;
+  color: var(--ink-faint);
+  font-size: .8rem;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+/* ---------- buttons ---------- */
+.wlf-btn{
+  font-family: 'Special Elite', monospace;
+  background: var(--paper);
+  border: 2px solid var(--ink);
+  color: var(--ink);
+  padding: .55rem 1.1rem;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: .95rem;
+  letter-spacing: .03em;
+  transition: transform .08s ease, box-shadow .08s ease;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+.wlf-btn:hover{ background: var(--paper-alt); }
+.wlf-btn:active{ transform: translate(2px,2px); box-shadow: none; }
+.wlf-btn.primary{ background: var(--red); color: #fbf3dc; border-color: var(--red-dark); box-shadow: 2px 2px 0 var(--red-dark); }
+.wlf-btn.primary:hover{ background: var(--red-dark); }
+.wlf-btn:disabled{ opacity: .45; cursor: not-allowed; }
+
+/* ---------- misc ---------- */
+.wlf-hr{
+  border: none;
+  border-top: 2px dashed var(--line);
+  margin: 2.5rem 0;
+}
+.wlf-muted{ color: var(--ink-soft); font-size: .92rem; }
+.wlf-footer{
+  text-align: center;
+  padding: 2rem 1rem 3rem;
+  color: var(--ink-faint);
+  font-size: .82rem;
+}
+.wlf-mono-tight{ font-family: 'Courier Prime', monospace; }
+
+::selection{ background: var(--gold); color: #241e18; }

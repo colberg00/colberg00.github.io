@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case No. 01 — The Marvel Manhunt</title>
+<meta name="description" content="Hunt down a hidden Marvel character using nothing but wiki-link distance. Week 1 case file for 02805 Social Graphs and Interactions.">
+<link rel="stylesheet" href="../assets/theme.css">
+<style>
+  .case-header{ text-align: center; padding: .5rem 0 2rem; }
+  .case-header .wlf-case-no{ display:block; margin-bottom:.4rem; }
+  .case-header h1{ font-size: 2.1rem; margin: 0 0 .6rem; }
+  .case-header p{ color: var(--ink-soft); max-width: 42rem; margin: 0 auto; }
+
+  .briefing{ display:grid; grid-template-columns: repeat(auto-fit,minmax(11rem,1fr)); gap: .9rem; margin: 1.75rem 0; }
+  .briefing .stat{ text-align:center; background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: .9rem .5rem; }
+  .briefing .stat .n{ font-family:'Special Elite',monospace; font-size:1.6rem; color: var(--red); display:block; }
+  .briefing .stat .l{ font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color: var(--ink-faint); }
+
+  /* ---- game panel ---- */
+  .game-panel{ position: relative; }
+  .game-top{ display:flex; justify-content: space-between; align-items:baseline; flex-wrap:wrap; gap:.5rem; margin-bottom: 1rem;}
+  .game-date{ font-size:.8rem; color: var(--ink-faint); }
+  .search-row{ position:relative; display:flex; gap:.6rem; flex-wrap:wrap; }
+  #game-input{
+    flex: 1 1 16rem;
+    font-family:'Courier Prime',monospace;
+    font-size: 1rem;
+    padding: .6rem .8rem;
+    border: 2px solid var(--ink);
+    border-radius: 3px;
+    background: #fbf6e8;
+    color: var(--ink);
+  }
+  #game-suggestions{
+    position:absolute; top: 100%; left:0; right: 8.5rem;
+    background:#fbf6e8; border: 2px solid var(--ink); border-top:none;
+    max-height: 14rem; overflow-y:auto; list-style:none; margin:0; padding:0;
+    z-index: 5; border-radius: 0 0 3px 3px;
+  }
+  #game-suggestions li{ padding:.45rem .8rem; cursor:pointer; font-size:.92rem; }
+  #game-suggestions li:hover, #game-suggestions li.active{ background: var(--gold); color:#241e18; }
+  #game-suggestions:empty{ display:none; }
+
+  .game-actions{ display:flex; gap:.6rem; margin-top:.85rem; flex-wrap:wrap; }
+  #game-error{ color: var(--red-dark); font-size:.85rem; min-height:1.2em; margin-top:.4rem; }
+
+  .best-lead{
+    margin-top: 1.1rem; padding: .75rem 1rem; border-radius: var(--radius);
+    background: var(--paper); border: 1px dashed var(--line); font-size: .92rem;
+  }
+  .best-lead b{ color: var(--red); }
+
+  #game-log{ list-style:none; padding:0; margin: 1.25rem 0 0; display:flex; flex-direction:column; gap:.5rem; }
+  .log-row{
+    display:grid; grid-template-columns: 1.6rem 1fr auto auto; gap:.7rem; align-items:center;
+    background: var(--paper); border:1px solid var(--line); border-radius: var(--radius); padding:.55rem .8rem;
+    font-size: .92rem;
+  }
+  .log-row .idx{ color: var(--ink-faint); font-family:'Special Elite',monospace; }
+  .temp-badge{
+    font-family:'Special Elite',monospace; font-size:.78rem; text-transform:uppercase; letter-spacing:.05em;
+    padding:.2rem .55rem; border-radius: 2px; color:#fff; white-space:nowrap; text-align:center;
+  }
+  .trend{ font-size:1.1rem; width:1.4rem; text-align:center; }
+
+  .win-panel{
+    margin-top: 1.5rem; padding: 1.4rem 1.5rem; border-radius: var(--radius);
+    background: linear-gradient(180deg,#f3ecd6,#ecdfb4); border: 2px solid var(--gold);
+    display:none;
+  }
+  .win-panel.show{ display:block; }
+  .win-panel h3{ margin: 0 0 .3rem; }
+  .win-panel .target-desc{ font-size:.92rem; color: var(--ink-soft); }
+  .path-chain{ display:flex; flex-wrap:wrap; align-items:center; gap:.4rem; margin: .8rem 0; font-size:.88rem; }
+  .path-chain .node{ background:#fff; border:1px solid var(--line); border-radius:2px; padding:.2rem .5rem; }
+  .path-chain .arrow{ color: var(--ink-faint); }
+
+  /* ---- analysis section ---- */
+  .two-col{ display:grid; grid-template-columns: 1fr 1fr; gap: 1.75rem; }
+  @media (max-width: 46rem){ .two-col{ grid-template-columns: 1fr; } }
+  .chart-box{ background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
+  .chart-box svg{ width:100%; height:auto; display:block; }
+  .chart-caption{ font-size:.8rem; color: var(--ink-faint); margin-top:.5rem; text-align:center; }
+
+  .rank-list{ list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:.45rem; }
+  .rank-list li{ display:grid; grid-template-columns: 9.5rem 1fr 2.2rem; gap:.6rem; align-items:center; font-size:.86rem; }
+  .rank-list .bar{ background: var(--line); border-radius: 2px; height: .7rem; position:relative; overflow:hidden; }
+  .rank-list .bar span{ display:block; height:100%; background: var(--red); }
+  .rank-list.out .bar span{ background: var(--blue-tack); }
+
+  .cold-cases{ display:flex; flex-wrap:wrap; gap:.4rem; margin-top: .6rem; }
+  .cold-cases span{ background: var(--paper); border:1px dashed var(--line); border-radius: 2px; padding:.2rem .55rem; font-size:.8rem; color: var(--ink-soft); }
+
+  #network-fig{ width:100%; background:#fbf6e8; border-radius: var(--radius); }
+  .fig-legend{ display:flex; gap:1.2rem; flex-wrap:wrap; font-size:.82rem; margin-top:.6rem; }
+  .fig-legend .dot{ display:inline-block; width:.7rem; height:.7rem; border-radius:50%; margin-right:.35rem; vertical-align:middle; }
+
+  .finding{
+    background: var(--paper-alt); border-left: 4px solid var(--red);
+    padding: .9rem 1.1rem; margin: 1rem 0; font-size: .95rem;
+  }
+</style>
+</head>
+<body class="wlf">
+
+<div class="wlf-masthead">
+  <div class="wlf-masthead-inner">
+    <a class="wlf-brand" href="../index.html">THE WIKI-LINK FILES
+      <small>An investigation unit &middot; est. 2026</small>
+    </a>
+    <nav class="wlf-nav">
+      <a href="../index.html">Agency HQ</a>
+      <a href="week1.html">Case No. 01</a>
+      <a href="https://github.com/colberg00/colberg00.github.io">Source</a>
+    </nav>
+  </div>
+</div>
+
+<main class="wlf-main">
+
+  <div class="case-header">
+    <span class="wlf-stamp">Case No. 01 &middot; Open</span>
+    <h1>The Marvel Manhunt</h1>
+    <p>
+      A hero is hiding somewhere in Wikipedia's <strong>Category:Marvel Comics superheroes</strong>
+      link network. You can't see them &mdash; but every character you question can tell you
+      exactly how many wiki-links stand between the two of them. Can you triangulate the target?
+    </p>
+  </div>
+
+  <h2>Research question</h2>
+  <p>
+    Wikipedia's internal links between the 303 Marvel superhero articles form a small,
+    dense social-style network. If we treat "how many clicks apart are two characters"
+    as a distance, is that distance informative enough for a human to home in on a hidden
+    target purely from hot/cold feedback &mdash; the way you'd play a real-life game of
+    Where's&nbsp;Waldo? And along the way: who are the hubs everyone points to, who are the
+    over-eager linkers nobody links back, and what does the network's structure (giant
+    component, isolated nodes, disconnected cliques) actually look like?
+  </p>
+
+  <h2>Method, in one paragraph</h2>
+  <p class="wlf-muted">
+    The raw data is <strong>directed</strong>: an edge A&nbsp;&rarr;&nbsp;B means the Wikipedia
+    article for A links to B, and links are rarely reciprocated (see below). For a distance
+    that behaves sensibly &mdash; finite, symmetric, "closer is closer" &mdash; the manhunt
+    below collapses the graph to <strong>undirected</strong> edges and measures distance with
+    breadth-first search. The target is always drawn from the network's giant component, since
+    a distance to an isolated node is either 0 or infinite and makes for a very short game.
+  </p>
+
+  <div class="briefing">
+    <div class="stat"><span class="n" id="stat-nodes">&hellip;</span><span class="l">Characters</span></div>
+    <div class="stat"><span class="n" id="stat-edges">&hellip;</span><span class="l">Wiki-links</span></div>
+    <div class="stat"><span class="n" id="stat-giant">&hellip;</span><span class="l">In giant component</span></div>
+    <div class="stat"><span class="n" id="stat-isolates">&hellip;</span><span class="l">True isolates</span></div>
+    <div class="stat"><span class="n" id="stat-diameter">&hellip;</span><span class="l">Network diameter</span></div>
+  </div>
+
+  <div class="wlf-board">
+    <div class="wlf-card game-panel">
+      <div class="wlf-pin"></div>
+      <div class="game-top">
+        <span class="wlf-case-no">Interrogation room</span>
+        <span class="game-date" id="game-date"></span>
+      </div>
+
+      <p class="wlf-muted" style="margin-top:0">
+        Type a Marvel character below. You'll be told the shortest wiki-link
+        distance from that character to today's hidden target &mdash; and whether
+        you're getting warmer or colder.
+      </p>
+
+      <div class="search-row">
+        <input id="game-input" type="text" placeholder="Type a character name…" autocomplete="off" disabled>
+        <button class="wlf-btn primary" id="game-guess-btn" disabled>Question them</button>
+        <button class="wlf-btn" id="game-hint-btn" disabled>Follow a lead</button>
+        <button class="wlf-btn" id="game-new-btn" disabled>New random case</button>
+        <ul id="game-suggestions"></ul>
+      </div>
+      <div id="game-error"></div>
+
+      <div class="best-lead" id="best-lead" style="display:none"></div>
+
+      <ol id="game-log"></ol>
+
+      <div class="win-panel" id="win-panel">
+        <h3>Case closed &mdash; it was <span id="win-name"></span>.</h3>
+        <p class="target-desc" id="win-desc"></p>
+        <p class="wlf-muted" id="win-tally"></p>
+        <div class="path-chain" id="win-path"></div>
+        <button class="wlf-btn" id="share-btn">Copy case summary</button>
+        <button class="wlf-btn" id="play-again-btn">Investigate a new case</button>
+      </div>
+    </div>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Behind the case files &mdash; the network, opened up</h2>
+  <p>
+    Everything below is computed directly from <code>week1_nodes.tsv</code> and
+    <code>week1_edges.tsv</code>, live in your browser.
+  </p>
+
+  <h3>Degree distributions</h3>
+  <p class="wlf-muted">
+    "Degree" here means total wiki-links touching a character, ignoring direction. The
+    linear view is dominated almost entirely by low-degree characters, which is exactly
+    why the log&ndash;log view exists: it reveals a heavy tail &mdash; a handful of hub
+    characters with far more links than a random network would produce.
+  </p>
+  <div class="two-col">
+    <div class="chart-box">
+      <div id="chart-linear"></div>
+      <div class="chart-caption">Degree distribution &mdash; linear axes</div>
+    </div>
+    <div class="chart-box">
+      <div id="chart-loglog"></div>
+      <div class="chart-caption">Degree distribution &mdash; log&ndash;log axes</div>
+    </div>
+  </div>
+
+  <div class="finding" id="finding-hub"></div>
+
+  <h3>Who gets linked <em>to</em>, vs. who links <em>out</em></h3>
+  <p class="wlf-muted">
+    In-degree and out-degree tell very different stories. High in-degree, low out-degree
+    characters are the network's "celebrities" &mdash; everyone name-drops them, they
+    name-drop almost no one. The reverse pattern marks the "connectors."
+  </p>
+  <div class="two-col">
+    <div>
+      <h4>Most wanted &mdash; highest in-degree</h4>
+      <ul class="rank-list" id="top-in-list"></ul>
+    </div>
+    <div>
+      <h4>Most talkative &mdash; highest out-degree</h4>
+      <ul class="rank-list out" id="top-out-list"></ul>
+    </div>
+  </div>
+
+  <div class="finding" id="finding-asymmetry"></div>
+
+  <h3>The evidence board &mdash; full network</h3>
+  <p class="wlf-muted">
+    Every character as a node (sized by degree), every wiki-link as an edge. Drag to
+    rearrange, scroll to zoom, click a node for its name. Watch what happens at the edges
+    of the board: a handful of characters drift off entirely disconnected.
+  </p>
+  <div class="chart-box">
+    <div id="network-fig"></div>
+    <div class="fig-legend">
+      <span><span class="dot" style="background:#9c2b21"></span>Giant component (main universe)</span>
+      <span><span class="dot" style="background:#2f5e6b"></span>Disconnected clique</span>
+      <span><span class="dot" style="background:#8a7a62"></span>True isolate</span>
+    </div>
+  </div>
+
+  <h3>Isolated nodes &amp; the giant component</h3>
+  <p>
+    <span id="giant-fraction-text"></span> The remainder splits into one small, self-contained
+    clique and a set of characters with no links at all &mdash; Wikipedia's articles on these
+    characters simply never mention another hero from the category, and no other article
+    mentions them.
+  </p>
+  <p class="wlf-muted">These are the cold cases &mdash; excluded from the manhunt above because a distance to them is never informative:</p>
+  <div class="cold-cases" id="cold-cases-list"></div>
+
+  <div class="finding" id="finding-surprise"></div>
+
+  <hr class="wlf-hr">
+
+  <h2>Discussion</h2>
+  <p>
+    The manhunt game turns a somewhat dry methodological choice &mdash; symmetrizing a
+    directed graph so that BFS distance is well-defined &mdash; into something you can
+    actually feel: because the average shortest path is short (see the diameter stat
+    above), a handful of good guesses almost always close the case. That's the small-world
+    property of this network made tangible. The one place the game intentionally breaks
+    is the 17 isolates and the 9-character clique above: structurally, no amount of
+    "hot/cold" reasoning can ever reach them from the rest of the universe, which is
+    itself a finding worth sitting with.
+  </p>
+
+  <p class="wlf-muted">
+    Everything on this page is generated client-side from the two release TSVs, so open
+    dev tools and poke around if you don't believe a number &mdash; that's the point of an
+    open case file.
+  </p>
+
+</main>
+
+<footer class="wlf-footer">
+  Case No. 01 &middot; 02805 Social Graphs and Interactions &middot; Technical University of Denmark
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="../assets/week1.js"></script>
+</body>
+</html>
