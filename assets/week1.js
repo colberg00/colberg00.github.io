@@ -123,11 +123,6 @@
     const indeg = new Map(nodes.map((n) => [n.node_id, inAdj.get(n.node_id).size]));
     const outdeg = new Map(nodes.map((n) => [n.node_id, outAdj.get(n.node_id).size]));
 
-    const diameterRoot = giant.reduce((best, id) => {
-      // rough diameter estimate via double-BFS sweep (fine at this scale to just take max over a sample)
-      return best;
-    }, null);
-
     // exact-enough diameter: BFS from every giant node (277 nodes — trivial at this scale)
     let diameter = 0;
     let eccByNode = new Map();
@@ -146,7 +141,7 @@
     renderFindings({ nodes, degree, indeg, outdeg, byId, giant, smallClusters, isolates });
     renderNetworkFigure({ nodes, undirLinks, degree, giantSet, smallClusters, isolates, byId });
     renderColdCases({ smallClusters, isolates, byId });
-    setupGame({ giant, byId, undirAdj, eccByNode });
+    setupGame({ giant, byId, undirAdj, eccByNode, undirLinks, degree });
   }
 
   // ---------------------------------------------------------------
@@ -530,9 +525,95 @@
   }
 
   // ---------------------------------------------------------------
+  // Investigation map — a small force graph, embedded in the game
+  // panel, that highlights the last guess and everyone exactly as
+  // far from it as the target is.
+  // ---------------------------------------------------------------
+  function createInvestigationMap(container, nodeData, linkData) {
+    const w = 720,
+      h = 380;
+    container.innerHTML = "";
+    const svg = d3.select(container).append("svg").attr("viewBox", `0 0 ${w} ${h}`).attr("width", w).attr("height", h);
+
+    const zoomLayer = svg.append("g");
+    svg.call(
+      d3
+        .zoom()
+        .scaleExtent([0.3, 6])
+        .on("zoom", (event) => zoomLayer.attr("transform", event.transform))
+    );
+
+    const linkSel = zoomLayer
+      .append("g")
+      .attr("stroke", "#b7a377")
+      .attr("stroke-opacity", 0.35)
+      .selectAll("line")
+      .data(linkData)
+      .join("line")
+      .attr("stroke-width", 1);
+
+    const nodeSel = zoomLayer
+      .append("g")
+      .attr("stroke", "#2b2622")
+      .attr("stroke-width", 0.6)
+      .selectAll("circle")
+      .data(nodeData)
+      .join("circle")
+      .attr("r", (d) => d.r)
+      .attr("fill", "#cbbd94")
+      .style("cursor", "pointer");
+
+    nodeSel.append("title").text((d) => d.name);
+
+    const sim = d3
+      .forceSimulation(nodeData)
+      .force(
+        "link",
+        d3.forceLink(linkData).id((d) => d.id).distance(20).strength(0.22)
+      )
+      .force("charge", d3.forceManyBody().strength(-22))
+      .force("center", d3.forceCenter(w / 2, h / 2))
+      .force("collide", d3.forceCollide().radius((d) => d.r + 1.5))
+      .on("tick", () => {
+        linkSel
+          .attr("x1", (l) => l.source.x)
+          .attr("y1", (l) => l.source.y)
+          .attr("x2", (l) => l.target.x)
+          .attr("y2", (l) => l.target.y);
+        nodeSel.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+      });
+
+    let onPick = null;
+    nodeSel.on("click", (event, d) => {
+      event.stopPropagation();
+      if (onPick) onPick(d.id);
+    });
+
+    function highlight({ guessId, ringIds, guessedIds }) {
+      const ring = new Set(ringIds || []);
+      nodeSel
+        .attr("fill", (d) => {
+          if (d.id === guessId) return "#9c2b21";
+          if (ring.has(d.id)) return "#d1a530";
+          if (guessedIds && guessedIds.has(d.id)) return "#8a7a62";
+          return "#cbbd94";
+        })
+        .attr("r", (d) => (d.id === guessId ? d.r + 3 : ring.has(d.id) ? d.r + 1.5 : d.r))
+        .attr("opacity", (d) => (guessId == null ? 1 : d.id === guessId || ring.has(d.id) ? 1 : 0.45));
+    }
+
+    return {
+      highlight,
+      onNodePick(fn) {
+        onPick = fn;
+      },
+    };
+  }
+
+  // ---------------------------------------------------------------
   // The manhunt game
   // ---------------------------------------------------------------
-  function setupGame({ giant, byId, undirAdj, eccByNode }) {
+  function setupGame({ giant, byId, undirAdj, eccByNode, undirLinks, degree }) {
     const candidates = giant
       .map((id) => byId.get(id))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -548,6 +629,9 @@
       error: document.getElementById("game-error"),
       log: document.getElementById("game-log"),
       bestLead: document.getElementById("best-lead"),
+      mapWrap: document.getElementById("map-wrap"),
+      candidatesLabel: document.getElementById("candidates-label"),
+      candidatesList: document.getElementById("candidates-list"),
       winPanel: document.getElementById("win-panel"),
       winName: document.getElementById("win-name"),
       winDesc: document.getElementById("win-desc"),
@@ -557,6 +641,24 @@
       playAgainBtn: document.getElementById("play-again-btn"),
       dateLabel: document.getElementById("game-date"),
     };
+
+    // giant-component-only subgraph for the investigation map (the only
+    // characters that can ever be a guess or a target)
+    const giantSet = new Set(giant);
+    const mapNodeData = giant.map((id) => ({
+      id,
+      name: byId.get(id).name,
+      r: Math.max(3, Math.min(14, 3 + Math.sqrt(degree.get(id)) * 1.5)),
+    }));
+    const mapLinkData = undirLinks
+      .filter((l) => giantSet.has(l.source) && giantSet.has(l.target))
+      .map((l) => ({ source: l.source, target: l.target }));
+    const map = createInvestigationMap(document.getElementById("investigation-map"), mapNodeData, mapLinkData);
+    map.onNodePick((id) => {
+      if (state.guessedIds.has(id) || els.input.disabled) return;
+      els.input.value = byId.get(id).name;
+      submitGuess();
+    });
 
     [els.input, els.guessBtn, els.hintBtn, els.newBtn].forEach((e) => (e.disabled = false));
 
@@ -583,6 +685,10 @@
       state.selectedId = null;
       els.log.innerHTML = "";
       els.bestLead.style.display = "none";
+      els.mapWrap.classList.remove("show");
+      els.candidatesList.innerHTML = "";
+      els.candidatesLabel.textContent = "";
+      map.highlight({ guessId: null, ringIds: [], guessedIds: state.guessedIds });
       els.winPanel.classList.remove("show");
       els.error.textContent = "";
       els.input.value = "";
@@ -665,7 +771,41 @@
 
       if (dist === 0) {
         winGame();
+      } else {
+        updateInvestigationMap(id, dist);
       }
+    }
+
+    function updateInvestigationMap(guessId, dist) {
+      const { dist: distFromGuess } = bfsFrom(guessId, undirAdj);
+      const ring = [];
+      distFromGuess.forEach((d, nodeId) => {
+        if (d === dist && nodeId !== guessId) ring.push(nodeId);
+      });
+      map.highlight({ guessId, ringIds: ring, guessedIds: state.guessedIds });
+      els.mapWrap.classList.add("show");
+
+      const unguessedRing = ring.filter((rid) => !state.guessedIds.has(rid));
+      els.candidatesLabel.innerHTML = unguessedRing.length
+        ? `${unguessedRing.length} character${unguessedRing.length === 1 ? "" : "s"} are exactly
+          <b>${dist}</b> step${dist === 1 ? "" : "s"} from <b>${byId.get(guessId).name}</b> &mdash;
+          the target is one of them:`
+        : `Every character at that distance from ${byId.get(guessId).name} has already been questioned &mdash; try a different lead.`;
+
+      els.candidatesList.innerHTML = "";
+      unguessedRing
+        .map((rid) => byId.get(rid))
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .forEach((n) => {
+          const chip = document.createElement("span");
+          chip.className = "candidate-chip";
+          chip.textContent = n.name;
+          chip.addEventListener("click", () => {
+            els.input.value = n.name;
+            submitGuess();
+          });
+          els.candidatesList.appendChild(chip);
+        });
     }
 
     function addLogRow(name, dist, prevDist, idx) {
