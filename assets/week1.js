@@ -531,7 +531,7 @@
   // ---------------------------------------------------------------
   function createInvestigationMap(container, nodeData, linkData) {
     const w = 720,
-      h = 380;
+      h = 460;
     container.innerHTML = "";
     const svg = d3.select(container).append("svg").attr("viewBox", `0 0 ${w} ${h}`).attr("width", w).attr("height", h);
 
@@ -539,14 +539,14 @@
     svg.call(
       d3
         .zoom()
-        .scaleExtent([0.3, 6])
+        .scaleExtent([0.3, 10])
         .on("zoom", (event) => zoomLayer.attr("transform", event.transform))
     );
 
     const linkSel = zoomLayer
       .append("g")
       .attr("stroke", "#b7a377")
-      .attr("stroke-opacity", 0.35)
+      .attr("stroke-opacity", 0.3)
       .selectAll("line")
       .data(linkData)
       .join("line")
@@ -560,20 +560,31 @@
       .data(nodeData)
       .join("circle")
       .attr("r", (d) => d.r)
-      .attr("fill", "#cbbd94")
-      .style("cursor", "pointer");
+      .attr("fill", "#cbbd94");
 
-    nodeSel.append("title").text((d) => d.name);
+    // labels are always on — this map exists to help a human read character
+    // names off the graph, not to hide them behind a hover
+    const labelSel = zoomLayer
+      .append("g")
+      .attr("font-family", "Courier Prime, monospace")
+      .attr("font-size", 6.5)
+      .attr("fill", "#4a4034")
+      .style("pointer-events", "none")
+      .selectAll("text")
+      .data(nodeData)
+      .join("text")
+      .attr("dy", "0.32em")
+      .text((d) => d.name);
 
     const sim = d3
       .forceSimulation(nodeData)
       .force(
         "link",
-        d3.forceLink(linkData).id((d) => d.id).distance(20).strength(0.22)
+        d3.forceLink(linkData).id((d) => d.id).distance(26).strength(0.22)
       )
-      .force("charge", d3.forceManyBody().strength(-22))
+      .force("charge", d3.forceManyBody().strength(-30))
       .force("center", d3.forceCenter(w / 2, h / 2))
-      .force("collide", d3.forceCollide().radius((d) => d.r + 1.5))
+      .force("collide", d3.forceCollide().radius((d) => d.r + 12))
       .on("tick", () => {
         linkSel
           .attr("x1", (l) => l.source.x)
@@ -581,33 +592,31 @@
           .attr("x2", (l) => l.target.x)
           .attr("y2", (l) => l.target.y);
         nodeSel.attr("cx", (d) => d.x).attr("cy", (d) => d.y);
+        labelSel.attr("x", (d) => d.x + d.r + 2).attr("y", (d) => d.y);
       });
-
-    let onPick = null;
-    nodeSel.on("click", (event, d) => {
-      event.stopPropagation();
-      if (onPick) onPick(d.id);
-    });
 
     function highlight({ guessId, ringIds, guessedIds }) {
       const ring = new Set(ringIds || []);
+      const fillFor = (d) => {
+        if (d.id === guessId) return "#9c2b21";
+        if (ring.has(d.id)) return "#d1a530";
+        if (guessedIds && guessedIds.has(d.id)) return "#8a7a62";
+        return "#cbbd94";
+      };
+      const opacityFor = (d) => (guessId == null ? 1 : d.id === guessId || ring.has(d.id) ? 1 : 0.35);
+
       nodeSel
-        .attr("fill", (d) => {
-          if (d.id === guessId) return "#9c2b21";
-          if (ring.has(d.id)) return "#d1a530";
-          if (guessedIds && guessedIds.has(d.id)) return "#8a7a62";
-          return "#cbbd94";
-        })
+        .attr("fill", fillFor)
         .attr("r", (d) => (d.id === guessId ? d.r + 3 : ring.has(d.id) ? d.r + 1.5 : d.r))
-        .attr("opacity", (d) => (guessId == null ? 1 : d.id === guessId || ring.has(d.id) ? 1 : 0.45));
+        .attr("opacity", opacityFor);
+
+      labelSel
+        .attr("fill", (d) => (d.id === guessId ? "#9c2b21" : ring.has(d.id) ? "#8a6a1f" : "#4a4034"))
+        .attr("font-weight", (d) => (d.id === guessId || ring.has(d.id) ? "bold" : "normal"))
+        .attr("opacity", opacityFor);
     }
 
-    return {
-      highlight,
-      onNodePick(fn) {
-        onPick = fn;
-      },
-    };
+    return { highlight };
   }
 
   // ---------------------------------------------------------------
@@ -654,11 +663,6 @@
       .filter((l) => giantSet.has(l.source) && giantSet.has(l.target))
       .map((l) => ({ source: l.source, target: l.target }));
     const map = createInvestigationMap(document.getElementById("investigation-map"), mapNodeData, mapLinkData);
-    map.onNodePick((id) => {
-      if (state.guessedIds.has(id) || els.input.disabled) return;
-      els.input.value = byId.get(id).name;
-      submitGuess();
-    });
 
     [els.input, els.guessBtn, els.hintBtn, els.newBtn].forEach((e) => (e.disabled = false));
 

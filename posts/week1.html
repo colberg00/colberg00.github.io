@@ -69,6 +69,7 @@
   .map-wrap h4{ margin: 0 0 .3rem; font-size: .95rem; }
   .map-wrap .map-caption{ font-size:.82rem; color: var(--ink-soft); margin: 0 0 .6rem; }
   #investigation-map{ width:100%; background:#fbf6e8; border-radius: var(--radius); border: 1px solid var(--line); }
+  #investigation-map svg{ width:100%; height:auto; display:block; }
   .map-legend{ display:flex; gap:1rem; flex-wrap:wrap; font-size:.78rem; margin-top:.5rem; color: var(--ink-soft); }
   .map-legend .dot{ display:inline-block; width:.65rem; height:.65rem; border-radius:50%; margin-right:.3rem; vertical-align:middle; }
 
@@ -207,8 +208,9 @@
         <h4>Investigation map</h4>
         <p class="map-caption">
           Your last guess is pinned in red. Everyone highlighted in gold is <em>exactly
-          as many wiki-links away from that guess</em> as the target is &mdash; the
-          target is guaranteed to be one of them. Click a name below to question them next.
+          as many wiki-links away from that guess</em> as the target is &mdash; the target
+          is guaranteed to be one of them. This map is just for reading the network &mdash;
+          scroll to zoom, drag to pan &mdash; then type or click a name below to question them.
         </p>
         <div id="investigation-map"></div>
         <div class="map-legend">
