@@ -573,7 +573,36 @@
     return out;
   }
 
-  function drawCCDF(el, seriesMap) {
+  // Poisson approximation to the ER / G(n,p) degree distribution, matched on
+  // average degree only (n drops out of the Poisson limit) — P(K>=k).
+  function erTheoreticalCcdf(avgDegree, maxDeg, minCcdf) {
+    const pts = [];
+    let ccdf = 1; // P(K>=0)
+    let pmf = Math.exp(-avgDegree); // pmf(0)
+    for (let k = 1; k <= maxDeg; k++) {
+      ccdf -= pmf; // now P(K>=k)
+      if (ccdf < minCcdf) break;
+      pts.push({ degree: k, ccdf });
+      pmf = (pmf * avgDegree) / k; // pmf(k)
+    }
+    return pts;
+  }
+
+  // Exact mean-field Barabási–Albert CCDF for attachment parameter m:
+  // P(k) = 2m(m+1) / (k(k+1)(k+2)) for k>=m, which telescopes to
+  // P(K>=k) = m(m+1) / (k(k+1)).
+  function baTheoreticalCcdf(mAttach, maxDeg, minCcdf) {
+    const pts = [];
+    const k0 = Math.max(1, mAttach);
+    for (let k = k0; k <= maxDeg; k++) {
+      const ccdf = (k0 * (k0 + 1)) / (k * (k + 1));
+      if (ccdf < minCcdf) break;
+      pts.push({ degree: k, ccdf });
+    }
+    return pts;
+  }
+
+  function drawCCDF(el, seriesMap, fitParams) {
     const w = 300,
       h = 300,
       m = { top: 16, right: 12, bottom: 42, left: 44 };
@@ -621,7 +650,42 @@
       .call(d3.axisLeft(y).ticks(4, "~s"))
       .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"));
 
+    const lineGen = d3
+      .line()
+      .x((p) => x(p.degree))
+      .y((p) => y(p.ccdf));
+
+    const fits = [];
+    if (fitParams) {
+      const erPts = erTheoreticalCcdf(fitParams.avgDegree, maxDeg, minCcdf);
+      if (erPts.length) {
+        fits.push({
+          color: "#5b7fae",
+          label: `ER fit (Poisson, ⟨k⟩=${fitParams.avgDegree.toFixed(1)})`,
+          points: erPts,
+        });
+      }
+      const baPts = baTheoreticalCcdf(fitParams.m, maxDeg, minCcdf);
+      if (baPts.length) {
+        fits.push({ color: "#c9a24a", label: `BA fit (exact, m=${fitParams.m})`, points: baPts });
+      }
+    }
+
+    // theoretical fits underneath, dashed, no dots (continuous curves, not samples)
+    fits.forEach((f) => {
+      svg
+        .append("path")
+        .datum(f.points)
+        .attr("fill", "none")
+        .attr("stroke", f.color)
+        .attr("stroke-width", 1.6)
+        .attr("stroke-dasharray", "5,3")
+        .attr("d", lineGen);
+    });
+
+    // empirical series: connecting line + dots on top
     keys.forEach((k) => {
+      svg.append("path").datum(seriesMap[k]).attr("fill", "none").attr("stroke", SERIES_COLOR[k]).attr("stroke-width", 1.3).attr("d", lineGen);
       svg
         .selectAll(`circle.ccdf-${k}`)
         .data(seriesMap[k])
@@ -629,7 +693,7 @@
         .attr("class", `ccdf-${k}`)
         .attr("cx", (p) => x(p.degree))
         .attr("cy", (p) => y(p.ccdf))
-        .attr("r", 2.8)
+        .attr("r", 2.6)
         .attr("fill", SERIES_COLOR[k])
         .attr("fill-opacity", 0.85)
         .append("title")
@@ -637,10 +701,18 @@
     });
 
     const legend = svg.append("g").attr("font-family", "Courier Prime, monospace").attr("font-size", 9.5);
-    keys.forEach((k, i) => {
-      const row = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + i * 13})`);
-      row.append("circle").attr("r", 3.5).attr("cx", 4).attr("cy", -3).attr("fill", SERIES_COLOR[k]);
-      row.append("text").attr("x", 10).attr("fill", "#2b2622").text(SERIES_LABEL[k]);
+    let row = 0;
+    keys.forEach((k) => {
+      const g = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + row * 13})`);
+      g.append("circle").attr("r", 3.5).attr("cx", 4).attr("cy", -3).attr("fill", SERIES_COLOR[k]);
+      g.append("text").attr("x", 10).attr("fill", "#2b2622").text(SERIES_LABEL[k]);
+      row++;
+    });
+    fits.forEach((f) => {
+      const g = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + row * 13})`);
+      g.append("line").attr("x1", 0).attr("x2", 8).attr("y1", -3).attr("y2", -3).attr("stroke", f.color).attr("stroke-width", 1.6).attr("stroke-dasharray", "4,2");
+      g.append("text").attr("x", 12).attr("fill", "#2b2622").text(f.label);
+      row++;
     });
   }
 
@@ -779,15 +851,43 @@
     return out;
   }
 
-  function drawFriendScatter(el, pairs) {
+  // Log-spaced density histograms of person-degree vs friend-degree, with a
+  // dashed mean line for each — the "size-biased shift, visually" figure.
+  function drawFriendHistograms(el, personDegs, friendDegs) {
     const w = 300,
       h = 300,
-      m = { top: 16, right: 16, bottom: 42, left: 44 };
+      m = { top: 16, right: 12, bottom: 42, left: 40 };
     const svg = svgRoot(el, w, h);
-    if (!pairs.length) return;
-    const maxDeg = Math.max(1, d3.max(pairs, (p) => Math.max(p.k, p.friendK)));
-    const x = d3.scaleLog().domain([1, maxDeg]).range([m.left, w - m.right]);
-    const y = d3.scaleLog().domain([1, maxDeg]).range([h - m.bottom, m.top]);
+    if (!personDegs.length || !friendDegs.length) return;
+
+    const maxDeg = Math.max(1, d3.max(personDegs.concat(friendDegs)));
+    const nBins = 16;
+    const edges = d3.range(nBins + 1).map((i) => Math.pow(10, (Math.log10(maxDeg + 1) * i) / nBins));
+
+    function densityHist(arr) {
+      const counts = new Array(nBins).fill(0);
+      arr.forEach((v) => {
+        let bin = nBins - 1;
+        for (let i = 0; i < nBins; i++) {
+          if (v >= edges[i] && v < edges[i + 1]) {
+            bin = i;
+            break;
+          }
+        }
+        counts[bin]++;
+      });
+      return counts.map((c, i) => ({
+        lo: edges[i],
+        hi: edges[i + 1],
+        density: c / arr.length / (edges[i + 1] - edges[i]),
+      }));
+    }
+
+    const personHist = densityHist(personDegs);
+    const friendHist = densityHist(friendDegs);
+    const x = d3.scaleLog().domain([1, maxDeg + 1]).range([m.left, w - m.right]);
+    const maxDensity = Math.max(d3.max(personHist, (b) => b.density), d3.max(friendHist, (b) => b.density)) || 1;
+    const y = d3.scaleLinear().domain([0, maxDensity]).nice().range([h - m.bottom, m.top]);
 
     svg
       .append("g")
@@ -800,41 +900,53 @@
       .attr("fill", "#2b2622")
       .attr("font-size", 10)
       .attr("text-anchor", "middle")
-      .text("your degree (log)");
+      .text("degree (log)");
 
     svg
       .append("g")
       .attr("transform", `translate(${m.left},0)`)
-      .call(d3.axisLeft(y).ticks(4, "~s"))
-      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"))
-      .append("text")
-      .attr("transform", "rotate(-90)")
-      .attr("x", -(h - m.top - m.bottom) / 2 - m.top)
-      .attr("y", -32)
-      .attr("fill", "#2b2622")
-      .attr("font-size", 10)
-      .attr("text-anchor", "middle")
-      .text("random friend's degree (log)");
+      .call(d3.axisLeft(y).ticks(4))
+      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"));
 
-    svg
-      .append("line")
-      .attr("x1", x(1))
-      .attr("y1", y(1))
-      .attr("x2", x(maxDeg))
-      .attr("y2", y(maxDeg))
-      .attr("stroke", "#8a7a62")
-      .attr("stroke-dasharray", "4,3");
+    function drawBars(hist, color) {
+      svg
+        .selectAll(null)
+        .data(hist)
+        .join("rect")
+        .attr("x", (b) => x(Math.max(1, b.lo)))
+        .attr("width", (b) => Math.max(0, x(b.hi) - x(Math.max(1, b.lo))))
+        .attr("y", (b) => y(b.density))
+        .attr("height", (b) => h - m.bottom - y(b.density))
+        .attr("fill", color)
+        .attr("fill-opacity", 0.55);
+    }
+    drawBars(personHist, "#8a7a62");
+    drawBars(friendHist, SERIES_COLOR.marvel);
 
-    svg
-      .selectAll("circle.fp-pt")
-      .data(pairs)
-      .join("circle")
-      .attr("class", "fp-pt")
-      .attr("cx", (p) => x(p.k))
-      .attr("cy", (p) => y(p.friendK))
-      .attr("r", 2.8)
-      .attr("fill", SERIES_COLOR.marvel)
-      .attr("fill-opacity", 0.45);
+    function meanLine(vals, color) {
+      const mean = d3.mean(vals);
+      svg
+        .append("line")
+        .attr("x1", x(mean))
+        .attr("x2", x(mean))
+        .attr("y1", m.top)
+        .attr("y2", h - m.bottom)
+        .attr("stroke", color)
+        .attr("stroke-width", 1.8)
+        .attr("stroke-dasharray", "5,3");
+    }
+    meanLine(personDegs, "#2b2622");
+    meanLine(friendDegs, SERIES_COLOR.marvel);
+
+    const legend = svg.append("g").attr("font-family", "Courier Prime, monospace").attr("font-size", 9);
+    [
+      { color: "#8a7a62", label: "person (uniform)" },
+      { color: SERIES_COLOR.marvel, label: "friend (size-biased)" },
+    ].forEach((it, i) => {
+      const row = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + i * 13})`);
+      row.append("rect").attr("width", 8).attr("height", 8).attr("y", -8).attr("fill", it.color).attr("fill-opacity", 0.7);
+      row.append("text").attr("x", 12).attr("fill", "#2b2622").text(it.label);
+    });
   }
 
   // ---------------------------------------------------------------
@@ -926,7 +1038,123 @@
     return nodeIds.length ? sumC / nodeIds.length : 0;
   }
 
-  function drawShuffleStrip(el, nullVals, realVal) {
+  function triangleCount(nodeIds, adj) {
+    let total = 0;
+    nodeIds.forEach((id) => {
+      const nb = Array.from(adj.get(id));
+      const k = nb.length;
+      for (let i = 0; i < k; i++) {
+        const ai = adj.get(nb[i]);
+        for (let j = i + 1; j < k; j++) {
+          if (ai.has(nb[j])) total++;
+        }
+      }
+    });
+    return total / 3; // each triangle counted once at each of its 3 vertices
+  }
+
+  function componentCount(nodeIds, adj) {
+    return connectedComponents(nodeIds, adj).length;
+  }
+
+  function hubShare(nodeIds, adj) {
+    let maxDeg = 0;
+    let sumDeg = 0;
+    nodeIds.forEach((id) => {
+      const k = adj.get(id).size;
+      sumDeg += k;
+      if (k > maxDeg) maxDeg = k;
+    });
+    return sumDeg ? maxDeg / sumDeg : 0;
+  }
+
+  function reciprocity(directedEdges) {
+    const set = new Set(directedEdges.map(([a, b]) => `${a}→${b}`));
+    let matches = 0;
+    directedEdges.forEach(([a, b]) => {
+      if (a !== b && set.has(`${b}→${a}`)) matches++;
+    });
+    return directedEdges.length ? matches / directedEdges.length : 0;
+  }
+
+  // Directed double-edge-swap (Maslov–Sneppen for digraphs): pick two directed
+  // edges a->b and c->d with no shared endpoint, cross their targets to a->d
+  // and c->b. This preserves every node's in-degree AND out-degree exactly.
+  function directedEdgeSwapShuffle(directedEdges, swapAttempts) {
+    const edges = directedEdges.map((e) => e.slice());
+    const edgeSet = new Set(edges.map(([a, b]) => `${a}→${b}`));
+    let success = 0;
+    let guard = 0;
+    const maxGuard = swapAttempts * 20;
+    while (success < swapAttempts && guard < maxGuard && edges.length > 1) {
+      guard++;
+      const i = Math.floor(Math.random() * edges.length);
+      const j = Math.floor(Math.random() * edges.length);
+      if (i === j) continue;
+      const [a, b] = edges[i];
+      const [c, d] = edges[j];
+      if (a === c || b === d || a === d || c === b) continue;
+      const key1 = `${a}→${d}`;
+      const key2 = `${c}→${b}`;
+      if (edgeSet.has(key1) || edgeSet.has(key2)) continue;
+      edgeSet.delete(`${a}→${b}`);
+      edgeSet.delete(`${c}→${d}`);
+      edgeSet.add(key1);
+      edgeSet.add(key2);
+      edges[i] = [a, d];
+      edges[j] = [c, b];
+      success++;
+    }
+    return edges;
+  }
+
+  // Registry driving the Case Analysis III variable picker. Each entry knows
+  // how to compute itself on a (shuffled) graph, on the real graph, and how
+  // to format its own value for display.
+  const SHUFFLE_STATS = {
+    clustering: {
+      label: "CLUSTERING",
+      axisLabel: "average clustering coefficient C",
+      directed: false,
+      format: (v) => v.toFixed(4),
+      compute: (state, adj) => avgClusteringOnly(state.nodeIds, adj),
+      real: (state) => state.marvelStats.avgClustering,
+    },
+    triangles: {
+      label: "TRIANGLES",
+      axisLabel: "number of triangles",
+      directed: false,
+      format: (v) => Math.round(v).toString(),
+      compute: (state, adj) => triangleCount(state.nodeIds, adj),
+      real: (state) => triangleCount(state.nodeIds, state.adj),
+    },
+    islands: {
+      label: "ISLANDS",
+      axisLabel: "number of connected components",
+      directed: false,
+      format: (v) => Math.round(v).toString(),
+      compute: (state, adj) => componentCount(state.nodeIds, adj),
+      real: (state) => componentCount(state.nodeIds, state.adj),
+    },
+    hubshare: {
+      label: "HUB SHARE",
+      axisLabel: "top hub's share of all edge-endpoints",
+      directed: false,
+      format: (v) => (v * 100).toFixed(2) + "%",
+      compute: (state, adj) => hubShare(state.nodeIds, adj),
+      real: (state) => hubShare(state.nodeIds, state.adj),
+    },
+    reciprocity: {
+      label: "RECIPROCITY",
+      axisLabel: "reciprocity (fraction of mutual links)",
+      directed: true,
+      format: (v) => v.toFixed(4),
+      compute: (state, edges) => reciprocity(edges),
+      real: (state) => reciprocity(state.directedEdges),
+    },
+  };
+
+  function drawShuffleStrip(el, nullVals, realVal, axisLabel) {
     const w = 620,
       h = 190,
       m = { top: 34, right: 24, bottom: 36, left: 24 };
@@ -947,7 +1175,7 @@
       .attr("fill", "#2b2622")
       .attr("font-size", 11)
       .attr("text-anchor", "middle")
-      .text("average clustering coefficient C");
+      .text(axisLabel || "value");
 
     const midY = (h - m.bottom + m.top) / 2 + 6;
     const jitter = d3.randomUniform(-16, 16);
@@ -995,6 +1223,8 @@
     const edgeRows = parseTSV(edgesTxt, ["source", "target"], false);
     const nodeIds = nodeRows.map((r) => r.node_id);
     const edgePairs = edgeRows.map((r) => [r.source, r.target]);
+    const nodeIdSet = new Set(nodeIds);
+    const directedEdges = edgePairs.filter(([a, b]) => a !== b && nodeIdSet.has(a) && nodeIdSet.has(b));
     const adj = buildUndirected(nodeIds, edgePairs);
     const marvelStats = computeStats(nodeIds, adj);
     const marvelDegrees = degreeDistribution(nodeIds, adj);
@@ -1013,6 +1243,7 @@
       p,
       nodeIds,
       adj,
+      directedEdges,
       nameById: new Map(nodeRows.map((r) => [r.node_id, r.name])),
       marvelStats,
       marvelDegrees,
@@ -1312,6 +1543,30 @@
     const rnd = state.runs.random?.stats;
     const mv = state.marvelStats;
 
+    if (pref) {
+      const cRatio = pref.avgClustering ? mv.avgClustering / pref.avgClustering : Infinity;
+      set(
+        "finding-vs-real",
+        `<strong>Grow your own Marvel &mdash; verdict:</strong> matched on n (${pref.n} vs ${mv.n}) and m
+        (${Math.round(pref.m)} vs ${Math.round(mv.m)}). <strong>What it gets right:</strong> the average path
+        length lands at <b>${pref.avgPathLength.toFixed(2)}</b>, essentially the same small-world distance as the
+        real network's <b>${mv.avgPathLength.toFixed(2)}</b> &mdash; and it does produce a real hub (max degree
+        <b>${pref.maxDegree}</b>, vs Marvel's <b>${mv.maxDegree}</b>).
+        <strong>The most glaring miss:</strong> clustering. Real Marvel characters cluster at
+        <b>${mv.avgClustering.toFixed(3)}</b> &mdash; a friend of your friend is often also your friend &mdash;
+        while this run only reaches <b>${pref.avgClustering.toFixed(3)}</b>, off by
+        <b>${cRatio.toFixed(1)}x</b>. Preferential attachment has no mechanism for triadic closure: new files
+        link to whichever files are already popular, never to each other's existing neighbors, so triangles only
+        form by coincidence. (Case Analysis III below tests exactly this gap and shows it isn't noise.)`
+      );
+    } else {
+      set(
+        "finding-vs-real",
+        `Hit <b>EXECUTE</b> with <b>PREFERENTIAL</b> selected above to grow a Marvel-sized network and see the
+        verdict here.`
+      );
+    }
+
     if (pref && uni) {
       set(
         "finding-recipe",
@@ -1407,7 +1662,9 @@
         seriesCcdf.random = ccdfFromCounts(state.runs.random.degrees);
       }
 
-      drawCCDF(document.getElementById("chart-ccdf"), seriesCcdf);
+      log(`> fitting ER (Poisson, ⟨k⟩=${state.marvelStats.avgDegree.toFixed(1)}) and BA (exact, m=${state.m}) curves matched to Marvel's own n and average degree...`, "tline-done");
+      const fitParams = { avgDegree: state.marvelStats.avgDegree, m: state.m };
+      drawCCDF(document.getElementById("chart-ccdf"), seriesCcdf, fitParams);
       drawLocalSlope(document.getElementById("chart-slope"), seriesSlope);
 
       const marvelSlopes = seriesSlope.marvel.map((p) => p.slope);
@@ -1427,15 +1684,27 @@
           (<b>${(mMax - mMin).toFixed(2)}</b> wide) is several times larger than that.`;
       } else {
         compareText = `Run <b>PREFERENTIAL</b> in the Field Toolkit above (ideally <b>FAST-FORWARD TO n=5,000</b>
-          too) and re-run this scan to add a Barabási&ndash;Albert comparison curve here.`;
+          too) and re-run this scan for an <em>empirical</em> Barabási&ndash;Albert local-slope curve as well
+          &mdash; the CCDF panel's dashed fit lines above don't need that, they're closed-form.`;
       }
+
+      const maxDeg = state.marvelStats.maxDegree;
+      const erCurve = erTheoreticalCcdf(fitParams.avgDegree, maxDeg, 0);
+      const baCurve = baTheoreticalCcdf(fitParams.m, maxDeg, 0);
+      const erAtMax = erCurve.length ? erCurve[erCurve.length - 1].ccdf : 0;
+      const baAtMax = baCurve.length ? baCurve[baCurve.length - 1].ccdf : 0;
+      const empiricalAtMax = 1 / state.marvelStats.n;
 
       document.getElementById("finding-classifier").innerHTML = `
         <strong>Finding:</strong> Marvel's degree distribution has a real heavy tail &mdash; its max degree
-        (<b>${state.marvelStats.maxDegree}</b>) is far beyond anything a matched random graph produces, which
-        already rules out "more random." But its local CCDF slope never holds still: it swings from
-        <b>${mMin.toFixed(2)}</b> to <b>${mMax.toFixed(2)}</b> as k increases, instead of settling near one value
-        the way a clean power law would. ${compareText}
+        (<b>${maxDeg}</b>) is far beyond anything a matched random graph produces, which already rules out "more
+        random." The dashed fit lines make that precise: an ER/Poisson graph matched on Marvel's own average
+        degree predicts essentially <em>zero</em> characters that popular (CCDF&nbsp;&asymp;&nbsp;<b>${erAtMax.toExponential(1)}</b>
+        at k=${maxDeg}), while the exact Barabási&ndash;Albert formula (m=${state.m}) predicts
+        <b>${baAtMax.toFixed(4)}</b> &mdash; much closer to, though still below, the observed
+        <b>${empiricalAtMax.toFixed(4)}</b> (1 in ${state.marvelStats.n}). But Marvel's local CCDF slope never
+        holds still the way BA's does: it swings from <b>${mMin.toFixed(2)}</b> to <b>${mMax.toFixed(2)}</b> as k
+        increases, instead of settling near one value the way a clean power law would. ${compareText}
         <br><br>
         <strong>What we can't conclude:</strong> with only ${state.marvelStats.n} nodes, this instability is
         evidence against confidently calling Marvel scale-free &mdash; it is not proof that no power law is there.
@@ -1460,8 +1729,12 @@
       log("> computing exact friend-degree ratio over the degree sequence...");
 
       const fs = friendshipStats(state.nodeIds, state.adj);
-      const pairs = sampleFriendPairs(state.nodeIds, state.adj, 250);
-      drawFriendScatter(document.getElementById("chart-fp-scatter"), pairs);
+      const pairs = sampleFriendPairs(state.nodeIds, state.adj, 2000);
+      drawFriendHistograms(
+        document.getElementById("chart-fp-dist"),
+        pairs.map((p) => p.k),
+        pairs.map((p) => p.friendK)
+      );
 
       flashStat(document.getElementById("fp-avgk"), fs.avgDegree.toFixed(2), 0);
       flashStat(document.getElementById("fp-avgfriend"), fs.avgFriendDegree.toFixed(2), 1);
@@ -1510,50 +1783,85 @@
     const btn = document.getElementById("shuffle-run-btn");
     if (!btn) return;
     const log = makeLogger(document.getElementById("shuffle-log"));
+    const statBtns = Array.from(document.querySelectorAll(".stat-btn"));
+    state.shuffleStat = state.shuffleStat || "clustering";
+
+    statBtns.forEach((b) => {
+      b.addEventListener("click", () => {
+        if (btn.disabled) return;
+        state.shuffleStat = b.dataset.stat;
+        statBtns.forEach((x) => x.classList.toggle("active", x === b));
+      });
+    });
 
     btn.addEventListener("click", async () => {
       if (btn.disabled) return;
       btn.disabled = true;
+      statBtns.forEach((b) => (b.disabled = true));
+
+      const meta = SHUFFLE_STATS[state.shuffleStat];
       document.getElementById("shuffle-log").innerHTML = "";
       log("> booting CHAIN-OF-CUSTODY.exe...");
-      log(`> real clustering coefficient: ${state.marvelStats.avgClustering.toFixed(4)}`);
-      log("> running 20 degree-preserving double-edge-swap shuffles...");
+      log(`> variable under test: ${meta.label}`);
+      const realVal = meta.real(state);
+      log(`> real value: ${meta.format(realVal)}`);
+      log(`> running 20 degree-preserving ${meta.directed ? "directed " : ""}double-edge-swap shuffles...`);
       await new Promise((r) => setTimeout(r, 20));
 
-      const swapAttempts = Math.round(state.marvelStats.m * 10);
       const nullVals = [];
-      for (let i = 0; i < 20; i++) {
-        const shuffled = doubleEdgeSwapShuffle(state.nodeIds, state.adj, swapAttempts);
-        nullVals.push(avgClusteringOnly(state.nodeIds, shuffled));
+      if (meta.directed) {
+        const swapAttempts = Math.round(state.directedEdges.length * 10);
+        for (let i = 0; i < 20; i++) {
+          const shuffled = directedEdgeSwapShuffle(state.directedEdges, swapAttempts);
+          nullVals.push(meta.compute(state, shuffled));
+        }
+      } else {
+        const swapAttempts = Math.round(state.marvelStats.m * 10);
+        for (let i = 0; i < 20; i++) {
+          const shuffled = doubleEdgeSwapShuffle(state.nodeIds, state.adj, swapAttempts);
+          nullVals.push(meta.compute(state, shuffled));
+        }
       }
 
-      const realVal = state.marvelStats.avgClustering;
       const mean = nullVals.reduce((s, v) => s + v, 0) / nullVals.length;
       const variance = nullVals.reduce((s, v) => s + (v - mean) * (v - mean), 0) / nullVals.length;
       const sd = Math.sqrt(variance);
-      const z = sd ? (realVal - mean) / sd : NaN;
+      const z = sd ? (realVal - mean) / sd : null;
 
-      drawShuffleStrip(document.getElementById("chart-shuffle"), nullVals, realVal);
+      drawShuffleStrip(document.getElementById("chart-shuffle"), nullVals, realVal, meta.axisLabel);
 
-      flashStat(document.getElementById("sh-real"), realVal.toFixed(4), 0);
-      flashStat(document.getElementById("sh-mean"), mean.toFixed(4), 0);
-      flashStat(document.getElementById("sh-sd"), sd.toFixed(4), 0);
-      flashStat(document.getElementById("sh-z"), z.toFixed(1), 1);
+      flashStat(document.getElementById("sh-real"), meta.format(realVal), 0);
+      flashStat(document.getElementById("sh-mean"), meta.format(mean), 0);
+      flashStat(document.getElementById("sh-sd"), meta.format(sd), 0);
+      flashStat(document.getElementById("sh-z"), z === null ? "n/a" : z.toFixed(1), 1);
 
-      log(`> null mean=${mean.toFixed(4)}  sd=${sd.toFixed(4)}  z=${z.toFixed(1)}`, "tline-done");
-      log(`> verdict: clustering does NOT survive the shuffle.`, "tline-done");
+      log(`> null mean=${meta.format(mean)}  sd=${meta.format(sd)}  z=${z === null ? "n/a" : z.toFixed(1)}`, "tline-done");
+
+      let verdict;
+      if (sd === 0) {
+        log(`> verdict: ${meta.label} is invariant under this shuffle.`, "tline-done");
+        verdict = `<b>${meta.label}</b> is <strong>invariant</strong> under this exact shuffle: all 20 shuffles
+          produced the identical value <b>${meta.format(realVal)}</b>, because it's a pure function of the degree
+          sequence itself &mdash; which a degree-preserving shuffle leaves untouched by construction. That's not a
+          bug, it's the cleanest possible proof of what "degree-preserving" means.`;
+      } else {
+        const dies = Math.abs(z) > 3;
+        log(`> verdict: ${meta.label} ${dies ? "does NOT survive" : "survives"} the shuffle.`, "tline-done");
+        verdict = dies
+          ? `<b>${meta.label}</b> <strong>dies</strong> under the shuffle (real
+             <b>${meta.format(realVal)}</b> vs null mean <b>${meta.format(mean)}</b>, z&asymp;<b>${z.toFixed(1)}</b>)
+             &mdash; the real value depends on the actual wiring, not just who has how many links.`
+          : `<b>${meta.label}</b> roughly <strong>survives</strong> the shuffle (real
+             <b>${meta.format(realVal)}</b> vs null mean <b>${meta.format(mean)}</b>, z&asymp;<b>${z.toFixed(1)}</b>,
+             within noise) &mdash; the degree sequence alone is enough to explain it.`;
+      }
 
       document.getElementById("finding-shuffle").innerHTML = `
-        <strong>Finding:</strong> real clustering (<b>${realVal.toFixed(3)}</b>) sits about
-        <b>${(realVal / mean).toFixed(2)}x</b> above the degree-preserving null's mean of
-        <b>${mean.toFixed(3)}</b> (z&asymp;<b>${z.toFixed(1)}</b>, 20 shuffles, SD ${sd.toFixed(4)}) &mdash;
-        nowhere close to overlapping. Clustering <b>dies</b> under the shuffle: it isn't just a consequence of who
-        has how many links, it needs the actual wiring &mdash; specific triangles between specific characters
-        &mdash; to reach ${realVal.toFixed(2)}. Compare that to everything computed in Case Analyses I and II
-        above: every degree-based number there (the CCDF, the local slope, the friendship-paradox ratio) is a
-        pure function of the degree sequence, so it <b>survives</b> this exact shuffle by construction &mdash;
-        only wiring-dependent numbers like clustering can actually die from it.`;
+        <strong>Finding:</strong> ${verdict} Compare that to everything computed in Case Analyses I and II above:
+        every degree-based number there (the CCDF, the local slope, the friendship-paradox ratio) is also a pure
+        function of the degree sequence, so it survives a degree-preserving shuffle by the same logic.`;
       btn.disabled = false;
+      statBtns.forEach((b) => (b.disabled = false));
     });
   }
 

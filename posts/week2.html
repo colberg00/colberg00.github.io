@@ -70,14 +70,14 @@
   @keyframes term-blink{ 50%{ opacity:0; } }
 
   .mode-row{ display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; position:relative; z-index:1; }
-  .mode-btn{
+  .mode-btn, .stat-btn{
     font-family:'Courier Prime', monospace; font-size:.82rem; letter-spacing:.03em;
     background: transparent; color:#7CFFB2; border:1px solid #2f6b46; border-radius:2px;
     padding:.5rem .8rem; cursor:pointer;
   }
-  .mode-btn:hover{ border-color:#4ffb84; }
-  .mode-btn.active{ background:#173321; border-color:#4ffb84; color:#c8ffd6; box-shadow: 0 0 8px rgba(79,251,132,.35) inset; }
-  .mode-btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .mode-btn:hover, .stat-btn:hover{ border-color:#4ffb84; }
+  .mode-btn.active, .stat-btn.active{ background:#173321; border-color:#4ffb84; color:#c8ffd6; box-shadow: 0 0 8px rgba(79,251,132,.35) inset; }
+  .mode-btn:disabled, .stat-btn:disabled{ opacity:.4; cursor:not-allowed; }
 
   .term-actions{ display:flex; flex-wrap:wrap; gap:.6rem; margin-top: .8rem; position:relative; z-index:1; }
   .term-btn{
@@ -224,8 +224,11 @@
   <h2>The Field Toolkit</h2>
   <p>
     First deployment of a recurring Agency gadget: a network synthesizer, built for this case and kept around
-    for whichever future ones need it. Pick a growth recipe, run it, and watch the stat readout for the
-    moment a hub either does or doesn't start pulling away from the pack.
+    for whichever future ones need it. Grow your own Marvel: run <strong>PREFERENTIAL</strong> below to build a
+    network at Marvel's exact size (n=303) with m tuned to match its real link count, then put it next to the
+    real thing in the ledger underneath. What does the model get right, and what is the most glaring thing it
+    gets wrong? The toolkit also lets you swap in <strong>UNIFORM</strong> or <strong>STATIC RANDOM</strong> growth
+    to isolate which ingredient &mdash; growth, preference, or both &mdash; is doing the work.
   </p>
 
   <div class="terminal">
@@ -279,6 +282,7 @@
             <tbody id="comparison-tbody"></tbody>
           </table>
         </div>
+        <div class="finding" id="finding-vs-real"></div>
       </div>
     </div>
   </div>
@@ -329,9 +333,13 @@
     to hang a power-law exponent on, and one straight line hides whether that slope actually holds steady
     anywhere. This panel checks the harder way: it computes Marvel's degree CCDF (the complementary cumulative
     distribution, P(K&nbsp;&ge;&nbsp;k) &mdash; unlike a binned histogram it needs no bin width and is defined at
-    every k), then tracks how the <em>local</em> slope of that curve moves as k increases. Barabási&ndash;Albert
-    theory predicts a local CCDF slope that holds flat near &minus;2 over a wide range; a random graph with no
-    heavy tail falls off a cliff almost immediately instead.
+    every k), then tracks how the <em>local</em> slope of that curve moves as k increases. Alongside Marvel's own
+    curve, the chart overlays two closed-form fits matched to Marvel's own size and average degree &mdash; a
+    Poisson approximation to the Erdős&ndash;Rényi (random-graph) degree distribution, and the exact
+    mean-field Barabási&ndash;Albert formula &mdash; so the comparison isn't just "run a synthetic network and
+    eyeball it," it's a real statistical fit. Barabási&ndash;Albert theory predicts a local CCDF slope that holds
+    flat near &minus;2 over a wide range; a random graph with no heavy tail falls off a cliff almost immediately
+    instead.
   </p>
   <div class="terminal">
     <div class="terminal-titlebar">
@@ -359,10 +367,11 @@
     On average, your friends have more friends than you do &mdash; not because you picked unpopular friends, but
     because popular characters simply show up in more people's friend lists than they'd otherwise deserve. It's a
     pure sampling effect, and it should show up in Marvel's wiki-link network too. This panel computes it exactly
-    (a closed-form ratio over the degree sequence, no sampling needed for that part), draws a fresh random sample
-    of (character, random co-linked character) pairs to see it directly, and asks two follow-ups: who are the
-    specific popular characters driving the effect, and is there anyone in the network who is never the
-    less-popular one in a connection &mdash; a character nobody out-popularity-ies?
+    (a closed-form ratio over the degree sequence, no sampling needed for that part), then draws two distributions
+    side by side &mdash; the degree of a uniformly random character, and the degree of that character's own
+    randomly chosen friend &mdash; so the size-biased shift is visible directly, not just as a single ratio. It
+    also asks two follow-ups: who are the specific popular characters driving the effect, and is there anyone in
+    the network who is never the less-popular one in a connection &mdash; a character nobody out-popularity-ies?
   </p>
   <div class="terminal">
     <div class="terminal-titlebar">
@@ -375,7 +384,7 @@
         <button class="term-btn" id="fp-run-btn">RUN FRIENDSHIP AUDIT</button>
       </div>
       <div class="term-panels">
-        <div class="term-graph-box"><div id="chart-fp-scatter"></div></div>
+        <div class="term-graph-box"><div id="chart-fp-dist"></div></div>
         <div class="term-stats">
           <div class="term-stat"><span class="tl">Avg degree &lang;k&rang;</span><span class="tv" id="fp-avgk">—</span></div>
           <div class="term-stat"><span class="tl">Avg friend degree</span><span class="tv" id="fp-avgfriend">—</span></div>
@@ -390,15 +399,17 @@
 
   <hr class="wlf-hr">
 
-  <h2>Case Analysis III &mdash; Chain of custody: does clustering survive a shuffle?</h2>
+  <h2>Case Analysis III &mdash; Chain of custody: what survives a shuffle?</h2>
   <p>
     Marvel's clustering coefficient is high &mdash; but so is its degree sequence's variance, and a few hub
-    characters alone can inflate clustering without any real "friends know each other" effect underneath. The
-    only way to tell a wiring fact from a degree-sequence fact is to destroy the wiring while keeping the degree
-    sequence exactly fixed, and see what's left standing. This toolkit performs a degree-preserving
-    double-edge-swap shuffle &mdash; the same edges, reattached between random pairs of endpoints so every
-    character keeps precisely as many links as before &mdash; twenty times, and plots where the real network's
-    clustering coefficient falls against that null distribution.
+    characters alone can inflate a summary statistic without any real "wiring" effect underneath. The only way
+    to tell a wiring fact from a degree-sequence fact is to destroy the wiring while keeping the degree sequence
+    exactly fixed, and see what's left standing. Pick a variable below, then run twenty degree-preserving
+    double-edge-swap shuffles &mdash; the same links, reattached between random pairs of endpoints so every
+    character keeps precisely as many connections as before &mdash; and see where the real network's value falls
+    against that null distribution. <strong>Reciprocity</strong> uses the underlying directed wiki-links instead
+    (article A links to B, independent of whether B links back), shuffled with the directed equivalent, since
+    reciprocation is inherently about direction.
   </p>
   <div class="terminal">
     <div class="terminal-titlebar">
@@ -407,13 +418,20 @@
     </div>
     <div class="terminal-body">
       <p class="term-intro">CASE ANALYSIS III // CHAIN OF CUSTODY v1.0 — degree-preserving shuffle test<span class="cursor"></span></p>
+      <div class="mode-row">
+        <button class="stat-btn active" data-stat="clustering">[ CLUSTERING ]</button>
+        <button class="stat-btn" data-stat="triangles">[ TRIANGLES ]</button>
+        <button class="stat-btn" data-stat="islands">[ ISLANDS ]</button>
+        <button class="stat-btn" data-stat="hubshare">[ HUB SHARE ]</button>
+        <button class="stat-btn" data-stat="reciprocity">[ RECIPROCITY ]</button>
+      </div>
       <div class="term-actions">
         <button class="term-btn" id="shuffle-run-btn">RUN SHUFFLE TEST (20x)</button>
       </div>
       <div class="term-panels">
         <div class="term-graph-box"><div id="chart-shuffle"></div></div>
         <div class="term-stats">
-          <div class="term-stat"><span class="tl">Real C</span><span class="tv" id="sh-real">—</span></div>
+          <div class="term-stat"><span class="tl">Real value</span><span class="tv" id="sh-real">—</span></div>
           <div class="term-stat"><span class="tl">Null mean</span><span class="tv" id="sh-mean">—</span></div>
           <div class="term-stat"><span class="tl">Null SD</span><span class="tv" id="sh-sd">—</span></div>
           <div class="term-stat"><span class="tl">z-score</span><span class="tv" id="sh-z">—</span></div>
