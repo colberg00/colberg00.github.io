@@ -411,7 +411,76 @@
     scaleup: "Preferential, n=5,000",
   };
 
-  function drawMultiLogLog(el, seriesMap) {
+  // SERIES_COLOR above is tuned for light paper backgrounds (.chart-box,
+  // .hist-cell). The Case Analysis panels draw on near-black terminal
+  // backgrounds instead, so they need their own bright palette — reusing
+  // SERIES_COLOR there made data and text alike unreadable against black.
+  const TERM_SERIES_COLOR = {
+    marvel: "#e35b52",
+    preferential: "#6fce85",
+    uniform: "#5ab4c9",
+    random: "#c9a24a",
+    scaleup: "#ffcf5c",
+  };
+  const TERM_AXIS = "#9fe8ae"; // axis titles + tick labels on dark terminal backgrounds
+  const TERM_LEGEND = "#c8ffd6"; // legend / callout text on dark terminal backgrounds
+  const TERM_MUTED = "#5f9c72"; // dim reference lines / placeholder text on dark terminal backgrounds
+
+  // Theoretical PMF-based expected node counts (not CCDF): P(k) scaled by n,
+  // for overlaying ER/BA fits on the raw or log-binned degree distribution.
+  // The Poisson PMF rises then falls (peaks near k=avgDegree), so unlike a
+  // CCDF this must be computed over the full range and filtered afterward —
+  // breaking on the first sub-threshold k would cut it off before it starts.
+  function erTheoreticalCounts(avgDegree, maxDeg, n, minCount) {
+    const pts = [];
+    let pmf = Math.exp(-avgDegree);
+    for (let k = 1; k <= maxDeg; k++) {
+      pmf = (pmf * avgDegree) / k;
+      pts.push({ degree: k, count: n * pmf });
+    }
+    return pts.filter((p) => p.count >= minCount);
+  }
+
+  function baTheoreticalCounts(mAttach, maxDeg, n, minCount) {
+    const pts = [];
+    const k0 = Math.max(1, mAttach);
+    for (let k = k0; k <= maxDeg; k++) {
+      const pmf = (2 * k0 * (k0 + 1)) / (k * (k + 1) * (k + 2));
+      pts.push({ degree: k, count: n * pmf });
+    }
+    return pts.filter((p) => p.count >= minCount);
+  }
+
+  // Aggregate a degree -> count map into log-spaced bins, each point placed
+  // at the bin's geometric mean and its count divided by the bin width — the
+  // standard "log-binned PDF" trick for reading a heavy tail through noise.
+  function logBinnedCounts(countsMap, nBins, maxDeg) {
+    const edges = d3.range(nBins + 1).map((i) => Math.pow(10, (Math.log10(maxDeg + 1) * i) / nBins));
+    const binSums = new Array(nBins).fill(0);
+    countsMap.forEach((count, degree) => {
+      if (degree <= 0) return;
+      let bin = nBins - 1;
+      for (let i = 0; i < nBins; i++) {
+        if (degree >= edges[i] && degree < edges[i + 1]) {
+          bin = i;
+          break;
+        }
+      }
+      binSums[bin] += count;
+    });
+    const pts = [];
+    for (let i = 0; i < nBins; i++) {
+      if (binSums[i] <= 0) continue;
+      const width = edges[i + 1] - edges[i];
+      const mid = Math.sqrt(edges[i] * edges[i + 1]); // geometric mean of the bin's edges
+      pts.push({ degree: mid, count: binSums[i] / width });
+    }
+    return pts;
+  }
+
+  function drawMultiLogLog(el, seriesMap, opts) {
+    opts = opts || {};
+    const binning = opts.binning === "binned" ? "binned" : "raw";
     const w = 620,
       h = 340,
       m = { top: 16, right: 16, bottom: 42, left: 46 };
@@ -429,20 +498,43 @@
         .text("Run the toolkit above to populate this chart.");
       return;
     }
-    let maxDeg = 1,
-      maxCount = 1;
-    const allPts = {};
+
+    // maxDeg from the raw degree keys regardless of display mode — needed to
+    // pick log-bin edges even when we're about to bin the data.
+    let maxDeg = 1;
     keys.forEach((k) => {
-      const pts = Array.from(seriesMap[k], ([degree, count]) => ({ degree, count })).filter((p) => p.degree > 0);
-      allPts[k] = pts;
-      pts.forEach((p) => {
-        if (p.degree > maxDeg) maxDeg = p.degree;
-        if (p.count > maxCount) maxCount = p.count;
+      seriesMap[k].forEach((count, degree) => {
+        if (degree > maxDeg) maxDeg = degree;
       });
     });
 
+    const allPts = {};
+    keys.forEach((k) => {
+      allPts[k] =
+        binning === "binned"
+          ? logBinnedCounts(seriesMap[k], 20, maxDeg)
+          : Array.from(seriesMap[k], ([degree, count]) => ({ degree, count })).filter((p) => p.degree > 0);
+    });
+
+    let maxCount = 1,
+      minCount = 1;
+    keys.forEach((k) => {
+      allPts[k].forEach((p) => {
+        if (p.count > maxCount) maxCount = p.count;
+        if (p.count < minCount) minCount = p.count;
+      });
+    });
+
+    const fits = [];
+    if (opts.fitParams) {
+      const erPts = erTheoreticalCounts(opts.fitParams.avgDegree, maxDeg, opts.fitParams.n, minCount);
+      if (erPts.length) fits.push({ color: "#33507a", label: `ER fit (Poisson, ⟨k⟩=${opts.fitParams.avgDegree.toFixed(1)})`, points: erPts });
+      const baPts = baTheoreticalCounts(opts.fitParams.m, maxDeg, opts.fitParams.n, minCount);
+      if (baPts.length) fits.push({ color: "#6b4f14", label: `BA fit (exact, m=${opts.fitParams.m})`, points: baPts });
+    }
+
     const x = d3.scaleLog().domain([1, maxDeg]).range([m.left, w - m.right]);
-    const y = d3.scaleLog().domain([1, maxCount]).range([h - m.bottom, m.top]);
+    const y = d3.scaleLog().domain([minCount, maxCount]).range([h - m.bottom, m.top]);
 
     svg
       .append("g")
@@ -455,7 +547,7 @@
       .attr("fill", "#2b2622")
       .attr("font-size", 11)
       .attr("text-anchor", "middle")
-      .text("degree (log scale)");
+      .text(binning === "binned" ? "degree (log scale) — log-binned" : "degree (log scale)");
 
     svg
       .append("g")
@@ -463,7 +555,19 @@
       .call(d3.axisLeft(y).ticks(5, "~s"))
       .call((g) => g.selectAll("text").attr("font-size", 10).attr("font-family", "Courier Prime, monospace"));
 
+    const lineGen = d3
+      .line()
+      .x((p) => x(p.degree))
+      .y((p) => y(p.count));
+
+    fits.forEach((f) => {
+      svg.append("path").datum(f.points).attr("fill", "none").attr("stroke", f.color).attr("stroke-width", 1.6).attr("stroke-dasharray", "5,3").attr("d", lineGen);
+    });
+
     keys.forEach((k) => {
+      if (binning === "binned") {
+        svg.append("path").datum(allPts[k]).attr("fill", "none").attr("stroke", SERIES_COLOR[k]).attr("stroke-width", 1.4).attr("d", lineGen);
+      }
       svg
         .selectAll(`circle.pt-${k}`)
         .data(allPts[k])
@@ -471,7 +575,7 @@
         .attr("class", `pt-${k}`)
         .attr("cx", (p) => x(p.degree))
         .attr("cy", (p) => y(p.count))
-        .attr("r", 3.2)
+        .attr("r", binning === "binned" ? 2.6 : 3.2)
         .attr("fill", SERIES_COLOR[k])
         .attr("fill-opacity", 0.85)
         .append("title")
@@ -479,10 +583,18 @@
     });
 
     const legend = svg.append("g").attr("font-family", "Courier Prime, monospace").attr("font-size", 10.5);
-    keys.forEach((k, i) => {
-      const row = legend.append("g").attr("transform", `translate(${m.left + 4},${m.top + i * 15})`);
-      row.append("circle").attr("r", 4).attr("cx", 4).attr("cy", -3).attr("fill", SERIES_COLOR[k]);
-      row.append("text").attr("x", 12).attr("fill", "#2b2622").text(SERIES_LABEL[k]);
+    let row = 0;
+    keys.forEach((k) => {
+      const g = legend.append("g").attr("transform", `translate(${m.left + 4},${m.top + row * 15})`);
+      g.append("circle").attr("r", 4).attr("cx", 4).attr("cy", -3).attr("fill", SERIES_COLOR[k]);
+      g.append("text").attr("x", 12).attr("fill", "#2b2622").text(SERIES_LABEL[k]);
+      row++;
+    });
+    fits.forEach((f) => {
+      const g = legend.append("g").attr("transform", `translate(${m.left + 4},${m.top + row * 15})`);
+      g.append("line").attr("x1", 0).attr("x2", 8).attr("y1", -3).attr("y2", -3).attr("stroke", f.color).attr("stroke-width", 1.6).attr("stroke-dasharray", "4,2");
+      g.append("text").attr("x", 12).attr("fill", "#2b2622").text(f.label);
+      row++;
     });
   }
 
@@ -616,7 +728,7 @@
         .attr("text-anchor", "middle")
         .attr("font-family", "Courier Prime, monospace")
         .attr("font-size", 11)
-        .attr("fill", "#8a7a62")
+        .attr("fill", TERM_MUTED)
         .text("Run the scan below.");
       return;
     }
@@ -635,11 +747,12 @@
       .append("g")
       .attr("transform", `translate(0,${h - m.bottom})`)
       .call(d3.axisBottom(x).ticks(4, "~s"))
-      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"))
+      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace").attr("fill", TERM_AXIS))
+      .call((g) => g.selectAll("path,line").attr("stroke", TERM_AXIS))
       .append("text")
       .attr("x", (w - m.left - m.right) / 2 + m.left)
       .attr("y", 34)
-      .attr("fill", "#2b2622")
+      .attr("fill", TERM_AXIS)
       .attr("font-size", 10)
       .attr("text-anchor", "middle")
       .text("degree k (log)");
@@ -648,7 +761,8 @@
       .append("g")
       .attr("transform", `translate(${m.left},0)`)
       .call(d3.axisLeft(y).ticks(4, "~s"))
-      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"));
+      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace").attr("fill", TERM_AXIS))
+      .call((g) => g.selectAll("path,line").attr("stroke", TERM_AXIS));
 
     const lineGen = d3
       .line()
@@ -685,7 +799,7 @@
 
     // empirical series: connecting line + dots on top
     keys.forEach((k) => {
-      svg.append("path").datum(seriesMap[k]).attr("fill", "none").attr("stroke", SERIES_COLOR[k]).attr("stroke-width", 1.3).attr("d", lineGen);
+      svg.append("path").datum(seriesMap[k]).attr("fill", "none").attr("stroke", TERM_SERIES_COLOR[k]).attr("stroke-width", 1.3).attr("d", lineGen);
       svg
         .selectAll(`circle.ccdf-${k}`)
         .data(seriesMap[k])
@@ -694,8 +808,8 @@
         .attr("cx", (p) => x(p.degree))
         .attr("cy", (p) => y(p.ccdf))
         .attr("r", 2.6)
-        .attr("fill", SERIES_COLOR[k])
-        .attr("fill-opacity", 0.85)
+        .attr("fill", TERM_SERIES_COLOR[k])
+        .attr("fill-opacity", 0.9)
         .append("title")
         .text(() => SERIES_LABEL[k]);
     });
@@ -704,14 +818,14 @@
     let row = 0;
     keys.forEach((k) => {
       const g = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + row * 13})`);
-      g.append("circle").attr("r", 3.5).attr("cx", 4).attr("cy", -3).attr("fill", SERIES_COLOR[k]);
-      g.append("text").attr("x", 10).attr("fill", "#2b2622").text(SERIES_LABEL[k]);
+      g.append("circle").attr("r", 3.5).attr("cx", 4).attr("cy", -3).attr("fill", TERM_SERIES_COLOR[k]);
+      g.append("text").attr("x", 10).attr("fill", TERM_LEGEND).text(SERIES_LABEL[k]);
       row++;
     });
     fits.forEach((f) => {
       const g = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + row * 13})`);
       g.append("line").attr("x1", 0).attr("x2", 8).attr("y1", -3).attr("y2", -3).attr("stroke", f.color).attr("stroke-width", 1.6).attr("stroke-dasharray", "4,2");
-      g.append("text").attr("x", 12).attr("fill", "#2b2622").text(f.label);
+      g.append("text").attr("x", 12).attr("fill", TERM_LEGEND).text(f.label);
       row++;
     });
   }
@@ -730,7 +844,7 @@
         .attr("text-anchor", "middle")
         .attr("font-family", "Courier Prime, monospace")
         .attr("font-size", 11)
-        .attr("fill", "#8a7a62")
+        .attr("fill", TERM_MUTED)
         .text("Run the scan below.");
       return;
     }
@@ -754,11 +868,12 @@
       .append("g")
       .attr("transform", `translate(0,${h - m.bottom})`)
       .call(d3.axisBottom(x).ticks(4, "~s"))
-      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"))
+      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace").attr("fill", TERM_AXIS))
+      .call((g) => g.selectAll("path,line").attr("stroke", TERM_AXIS))
       .append("text")
       .attr("x", (w - m.left - m.right) / 2 + m.left)
       .attr("y", 34)
-      .attr("fill", "#2b2622")
+      .attr("fill", TERM_AXIS)
       .attr("font-size", 10)
       .attr("text-anchor", "middle")
       .text("degree k (log)");
@@ -767,7 +882,8 @@
       .append("g")
       .attr("transform", `translate(${m.left},0)`)
       .call(d3.axisLeft(y).ticks(5))
-      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"));
+      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace").attr("fill", TERM_AXIS))
+      .call((g) => g.selectAll("path,line").attr("stroke", TERM_AXIS));
 
     svg
       .append("line")
@@ -775,7 +891,7 @@
       .attr("x2", w - m.right)
       .attr("y1", y(-2))
       .attr("y2", y(-2))
-      .attr("stroke", "#8a7a62")
+      .attr("stroke", TERM_MUTED)
       .attr("stroke-dasharray", "4,3");
     svg
       .append("text")
@@ -784,7 +900,7 @@
       .attr("text-anchor", "end")
       .attr("font-family", "Courier Prime, monospace")
       .attr("font-size", 8.5)
-      .attr("fill", "#8a7a62")
+      .attr("fill", TERM_LEGEND)
       .text("BA predicts −2");
 
     const line = d3
@@ -796,7 +912,7 @@
         .append("path")
         .datum(seriesMap[k])
         .attr("fill", "none")
-        .attr("stroke", SERIES_COLOR[k])
+        .attr("stroke", TERM_SERIES_COLOR[k])
         .attr("stroke-width", 2)
         .attr("d", line);
     });
@@ -893,11 +1009,12 @@
       .append("g")
       .attr("transform", `translate(0,${h - m.bottom})`)
       .call(d3.axisBottom(x).ticks(4, "~s"))
-      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"))
+      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace").attr("fill", TERM_AXIS))
+      .call((g) => g.selectAll("path,line").attr("stroke", TERM_AXIS))
       .append("text")
       .attr("x", (w - m.left - m.right) / 2 + m.left)
       .attr("y", 34)
-      .attr("fill", "#2b2622")
+      .attr("fill", TERM_AXIS)
       .attr("font-size", 10)
       .attr("text-anchor", "middle")
       .text("degree (log)");
@@ -906,7 +1023,11 @@
       .append("g")
       .attr("transform", `translate(${m.left},0)`)
       .call(d3.axisLeft(y).ticks(4))
-      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace"));
+      .call((g) => g.selectAll("text").attr("font-size", 9).attr("font-family", "Courier Prime, monospace").attr("fill", TERM_AXIS))
+      .call((g) => g.selectAll("path,line").attr("stroke", TERM_AXIS));
+
+    const personColor = TERM_AXIS;
+    const friendColor = TERM_SERIES_COLOR.marvel;
 
     function drawBars(hist, color) {
       svg
@@ -920,8 +1041,8 @@
         .attr("fill", color)
         .attr("fill-opacity", 0.55);
     }
-    drawBars(personHist, "#8a7a62");
-    drawBars(friendHist, SERIES_COLOR.marvel);
+    drawBars(personHist, personColor);
+    drawBars(friendHist, friendColor);
 
     function meanLine(vals, color) {
       const mean = d3.mean(vals);
@@ -935,17 +1056,17 @@
         .attr("stroke-width", 1.8)
         .attr("stroke-dasharray", "5,3");
     }
-    meanLine(personDegs, "#2b2622");
-    meanLine(friendDegs, SERIES_COLOR.marvel);
+    meanLine(personDegs, personColor);
+    meanLine(friendDegs, friendColor);
 
     const legend = svg.append("g").attr("font-family", "Courier Prime, monospace").attr("font-size", 9);
     [
-      { color: "#8a7a62", label: "person (uniform)" },
-      { color: SERIES_COLOR.marvel, label: "friend (size-biased)" },
+      { color: personColor, label: "person (uniform)" },
+      { color: friendColor, label: "friend (size-biased)" },
     ].forEach((it, i) => {
       const row = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + i * 13})`);
       row.append("rect").attr("width", 8).attr("height", 8).attr("y", -8).attr("fill", it.color).attr("fill-opacity", 0.7);
-      row.append("text").attr("x", 12).attr("fill", "#2b2622").text(it.label);
+      row.append("text").attr("x", 12).attr("fill", TERM_LEGEND).text(it.label);
     });
   }
 
@@ -1168,11 +1289,12 @@
       .append("g")
       .attr("transform", `translate(0,${h - m.bottom})`)
       .call(d3.axisBottom(x).ticks(6))
-      .call((g) => g.selectAll("text").attr("font-size", 10).attr("font-family", "Courier Prime, monospace"))
+      .call((g) => g.selectAll("text").attr("font-size", 10).attr("font-family", "Courier Prime, monospace").attr("fill", TERM_AXIS))
+      .call((g) => g.selectAll("path,line").attr("stroke", TERM_AXIS))
       .append("text")
       .attr("x", (w - m.left - m.right) / 2 + m.left)
       .attr("y", 34)
-      .attr("fill", "#2b2622")
+      .attr("fill", TERM_AXIS)
       .attr("font-size", 11)
       .attr("text-anchor", "middle")
       .text(axisLabel || "value");
@@ -1187,8 +1309,8 @@
       .attr("cx", (d) => x(d))
       .attr("cy", () => midY + jitter())
       .attr("r", 4)
-      .attr("fill", SERIES_COLOR.random)
-      .attr("fill-opacity", 0.8);
+      .attr("fill", TERM_SERIES_COLOR.random)
+      .attr("fill-opacity", 0.85);
 
     svg
       .append("line")
@@ -1196,10 +1318,10 @@
       .attr("x2", x(realVal))
       .attr("y1", m.top - 4)
       .attr("y2", h - m.bottom)
-      .attr("stroke", SERIES_COLOR.marvel)
+      .attr("stroke", TERM_SERIES_COLOR.marvel)
       .attr("stroke-width", 2)
       .attr("stroke-dasharray", "4,3");
-    svg.append("circle").attr("cx", x(realVal)).attr("cy", m.top - 4).attr("r", 5).attr("fill", SERIES_COLOR.marvel);
+    svg.append("circle").attr("cx", x(realVal)).attr("cy", m.top - 4).attr("r", 5).attr("fill", TERM_SERIES_COLOR.marvel);
     svg
       .append("text")
       .attr("x", x(realVal))
@@ -1207,7 +1329,7 @@
       .attr("text-anchor", "middle")
       .attr("font-family", "Courier Prime, monospace")
       .attr("font-size", 10)
-      .attr("fill", SERIES_COLOR.marvel)
+      .attr("fill", TERM_LEGEND)
       .text("real MARVEL_303");
   }
 
@@ -1252,11 +1374,13 @@
       runs: {}, // mode -> {stats, degrees, degArr}
       scaleup: null, // {stats, degrees}
       currentMode: "preferential",
+      pdfBinning: "raw",
       running: false,
       skip: false,
     };
 
     setupToolkit(state);
+    setupPdfToggle(state);
     renderComparison(state);
     renderCharts(state);
     renderFindings(state);
@@ -1264,6 +1388,18 @@
     setupClassifier(state);
     setupFriendshipAudit(state);
     setupShuffleTest(state);
+  }
+
+  function setupPdfToggle(state) {
+    const btns = Array.from(document.querySelectorAll(".toggle-btn"));
+    if (!btns.length) return;
+    btns.forEach((b) => {
+      b.addEventListener("click", () => {
+        state.pdfBinning = b.dataset.binning;
+        btns.forEach((x) => x.classList.toggle("active", x === b));
+        renderCharts(state);
+      });
+    });
   }
 
   function renderBriefing(s) {
@@ -1515,7 +1651,12 @@
     if (state.scaleup) seriesMap.scaleup = state.scaleup.degrees;
 
     const loglogEl = document.getElementById("chart-loglog-multi");
-    if (loglogEl) drawMultiLogLog(loglogEl, seriesMap);
+    if (loglogEl) {
+      drawMultiLogLog(loglogEl, seriesMap, {
+        binning: state.pdfBinning,
+        fitParams: { avgDegree: state.marvelStats.avgDegree, m: state.m, n: state.marvelStats.n },
+      });
+    }
 
     const grid = [
       ["hist-marvel", state.marvelDegArr, SERIES_COLOR.marvel],

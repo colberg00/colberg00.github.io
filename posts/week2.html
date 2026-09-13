@@ -150,6 +150,15 @@
   .chart-box svg{ width:100%; height:auto; display:block; }
   .chart-caption{ font-size:.8rem; color: var(--ink-faint); margin-top:.5rem; text-align:center; }
 
+  .toggle-row{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin: .7rem 0; }
+  .toggle-btn{
+    font-family:'Courier Prime', monospace; font-size:.78rem; letter-spacing:.02em;
+    background: var(--paper); color: var(--ink-soft); border:1px solid var(--line); border-radius:2px;
+    padding:.4rem .7rem; cursor:pointer;
+  }
+  .toggle-btn:hover{ border-color: var(--ink-faint); }
+  .toggle-btn.active{ background: var(--paper-alt); border-color: var(--ink); color: var(--ink); font-weight:bold; }
+
   .hist-grid{ display:grid; grid-template-columns: repeat(4, 1fr); gap:.7rem; margin-top: .9rem; }
   @media (max-width: 46rem){ .hist-grid{ grid-template-columns: repeat(2, 1fr); } }
   .hist-cell{ background: var(--paper); border:1px dashed var(--line); border-radius: var(--radius); padding:.5rem; }
@@ -298,8 +307,16 @@
   <h3>Degree distribution, log&ndash;log</h3>
   <p class="wlf-muted">
     Same axes as Case No. 01's hub chart, now with every recipe overlaid. A recipe that produces a hub shows
-    a long tail stretching to the right; a recipe that doesn't clusters tightly instead.
+    a long tail stretching to the right; a recipe that doesn't clusters tightly instead. Dashed lines are
+    closed-form ER and BA fits matched to Marvel's own n and average degree, same as Case Analysis I above.
+    <strong>Raw</strong> plots every observed degree as its own point &mdash; noisy in the tail, where most
+    exact degrees have 0 or 1 node. <strong>Log-binned</strong> aggregates degrees into log-spaced bins and
+    connects them with a line, trading resolution for a readable tail.
   </p>
+  <div class="toggle-row">
+    <button class="toggle-btn active" data-binning="raw">RAW (no binning)</button>
+    <button class="toggle-btn" data-binning="binned">LOG-BINNED (connected)</button>
+  </div>
   <div class="chart-box">
     <div id="chart-loglog-multi"></div>
     <div class="chart-caption">Degree distribution &mdash; log&ndash;log, all cases overlaid</div>
