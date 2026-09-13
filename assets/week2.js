@@ -396,6 +396,31 @@
     return d3.select(el).append("svg").attr("viewBox", `0 0 ${w} ${h}`).attr("width", w).attr("height", h);
   }
 
+  // Measures a finished legend <g> (already populated with rows) and both
+  // repositions it into a chosen corner and drops a background panel behind
+  // it, sized to fit — so it never visually collides with whatever chart
+  // data happens to be underneath it. Must run after the legend's rows are
+  // drawn (it measures their real rendered extent via getBBox).
+  function anchorLegendBox(legend, opts) {
+    const bbox = legend.node().getBBox();
+    if (!bbox.width && !bbox.height) return;
+    const marginLeft = opts.marginLeft != null ? opts.marginLeft : 4;
+    const marginRight = opts.marginRight != null ? opts.marginRight : 4;
+    const shiftX = opts.corner === "top-right" ? opts.width - marginRight - 6 - (bbox.x + bbox.width) : marginLeft + 2 - bbox.x;
+    const shiftY = opts.marginTop - bbox.y;
+    legend.attr("transform", `translate(${shiftX},${shiftY})`);
+    legend
+      .insert("rect", ":first-child")
+      .attr("x", bbox.x + shiftX - 6)
+      .attr("y", bbox.y + shiftY - 5)
+      .attr("width", bbox.width + 12)
+      .attr("height", bbox.height + 10)
+      .attr("fill", opts.bg)
+      .attr("fill-opacity", opts.bgOpacity != null ? opts.bgOpacity : 0.88)
+      .attr("stroke", opts.border)
+      .attr("rx", 3);
+  }
+
   const SERIES_COLOR = {
     marvel: "#9c2b21",
     preferential: "#4a7c3f",
@@ -585,17 +610,20 @@
     const legend = svg.append("g").attr("font-family", "Courier Prime, monospace").attr("font-size", 10.5);
     let row = 0;
     keys.forEach((k) => {
-      const g = legend.append("g").attr("transform", `translate(${m.left + 4},${m.top + row * 15})`);
+      const g = legend.append("g").attr("transform", `translate(0,${row * 15})`);
       g.append("circle").attr("r", 4).attr("cx", 4).attr("cy", -3).attr("fill", SERIES_COLOR[k]);
       g.append("text").attr("x", 12).attr("fill", "#2b2622").text(SERIES_LABEL[k]);
       row++;
     });
     fits.forEach((f) => {
-      const g = legend.append("g").attr("transform", `translate(${m.left + 4},${m.top + row * 15})`);
+      const g = legend.append("g").attr("transform", `translate(0,${row * 15})`);
       g.append("line").attr("x1", 0).attr("x2", 8).attr("y1", -3).attr("y2", -3).attr("stroke", f.color).attr("stroke-width", 1.6).attr("stroke-dasharray", "4,2");
       g.append("text").attr("x", 12).attr("fill", "#2b2622").text(f.label);
       row++;
     });
+    // this chart's curves cluster at the top-left (low k, high count), so
+    // the top-right is the corner least likely to have data under the legend.
+    anchorLegendBox(legend, { corner: "top-right", width: w, marginTop: m.top, marginRight: m.right, bg: "#e2d5ae", border: "#b7a377" });
   }
 
   function drawMiniHist(el, degreesArr, color) {
@@ -817,17 +845,20 @@
     const legend = svg.append("g").attr("font-family", "Courier Prime, monospace").attr("font-size", 9.5);
     let row = 0;
     keys.forEach((k) => {
-      const g = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + row * 13})`);
+      const g = legend.append("g").attr("transform", `translate(0,${row * 13})`);
       g.append("circle").attr("r", 3.5).attr("cx", 4).attr("cy", -3).attr("fill", TERM_SERIES_COLOR[k]);
       g.append("text").attr("x", 10).attr("fill", TERM_LEGEND).text(SERIES_LABEL[k]);
       row++;
     });
     fits.forEach((f) => {
-      const g = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + row * 13})`);
+      const g = legend.append("g").attr("transform", `translate(0,${row * 13})`);
       g.append("line").attr("x1", 0).attr("x2", 8).attr("y1", -3).attr("y2", -3).attr("stroke", f.color).attr("stroke-width", 1.6).attr("stroke-dasharray", "4,2");
       g.append("text").attr("x", 12).attr("fill", TERM_LEGEND).text(f.label);
       row++;
     });
+    // CCDF curves always start near (k=1, ccdf=1) — the top-left — so anchor
+    // the legend top-right instead, the one corner that's structurally empty.
+    anchorLegendBox(legend, { corner: "top-right", width: w, marginTop: m.top, marginRight: m.right, bg: "#0d1810", border: "#1f3826" });
   }
 
   function drawLocalSlope(el, seriesMap) {
@@ -893,15 +924,6 @@
       .attr("y2", y(-2))
       .attr("stroke", TERM_MUTED)
       .attr("stroke-dasharray", "4,3");
-    svg
-      .append("text")
-      .attr("x", w - m.right)
-      .attr("y", y(-2) - 4)
-      .attr("text-anchor", "end")
-      .attr("font-family", "Courier Prime, monospace")
-      .attr("font-size", 8.5)
-      .attr("fill", TERM_LEGEND)
-      .text("BA predicts −2");
 
     const line = d3
       .line()
@@ -916,6 +938,23 @@
         .attr("stroke-width", 2)
         .attr("d", line);
     });
+
+    // one boxed legend covering both the data lines and the reference line,
+    // instead of loose text sitting on top of whichever curve happens to
+    // cross that point — the local slope is volatile enough that no fixed
+    // spot along the -2 line stays clear of data.
+    const legend = svg.append("g").attr("font-family", "Courier Prime, monospace").attr("font-size", 9);
+    let row = 0;
+    keys.forEach((k) => {
+      const g = legend.append("g").attr("transform", `translate(0,${row * 12})`);
+      g.append("line").attr("x1", 0).attr("x2", 8).attr("y1", -3).attr("y2", -3).attr("stroke", TERM_SERIES_COLOR[k]).attr("stroke-width", 2);
+      g.append("text").attr("x", 12).attr("fill", TERM_LEGEND).text(SERIES_LABEL[k]);
+      row++;
+    });
+    const g = legend.append("g").attr("transform", `translate(0,${row * 12})`);
+    g.append("line").attr("x1", 0).attr("x2", 8).attr("y1", -3).attr("y2", -3).attr("stroke", TERM_MUTED).attr("stroke-width", 1.4).attr("stroke-dasharray", "3,2");
+    g.append("text").attr("x", 12).attr("fill", TERM_LEGEND).text("BA predicts −2");
+    anchorLegendBox(legend, { corner: "top-right", width: w, marginTop: m.top, marginRight: m.right, bg: "#0d1810", border: "#1f3826" });
   }
 
   // ---------------------------------------------------------------
@@ -1064,10 +1103,11 @@
       { color: personColor, label: "person (uniform)" },
       { color: friendColor, label: "friend (size-biased)" },
     ].forEach((it, i) => {
-      const row = legend.append("g").attr("transform", `translate(${m.left + 2},${m.top + i * 13})`);
+      const row = legend.append("g").attr("transform", `translate(0,${i * 13})`);
       row.append("rect").attr("width", 8).attr("height", 8).attr("y", -8).attr("fill", it.color).attr("fill-opacity", 0.7);
       row.append("text").attr("x", 12).attr("fill", TERM_LEGEND).text(it.label);
     });
+    anchorLegendBox(legend, { corner: "top-right", width: w, marginTop: m.top, marginRight: m.right, bg: "#0d1810", border: "#1f3826" });
   }
 
   // ---------------------------------------------------------------
