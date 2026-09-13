@@ -13,11 +13,9 @@
   // ---------------------------------------------------------------
   // Parsing
   // ---------------------------------------------------------------
-  function parseTSV(text, cols) {
-    return text
-      .split(/\r?\n/)
-      .filter((l) => l.length && !l.startsWith("#"))
-      .slice(1) // drop the header row
+  function parseTSV(text, cols, hasHeader = true) {
+    const lines = text.split(/\r?\n/).filter((l) => l.length && !l.startsWith("#"));
+    return (hasHeader ? lines.slice(1) : lines) // edges.tsv's header is commented out, so it has none left to drop
       .map((line) => {
         const parts = line.split("\t");
         const obj = {};
@@ -109,7 +107,7 @@
     ]);
 
     const nodes = parseTSV(nodesTxt, ["node_id", "name", "wikidata_id", "url", "description"]);
-    const edges = parseTSV(edgesTxt, ["source", "target"]);
+    const edges = parseTSV(edgesTxt, ["source", "target"], false);
     const graph = buildGraph(nodes, edges);
     const { byId, undirAdj, outAdj, inAdj, undirLinks } = graph;
 

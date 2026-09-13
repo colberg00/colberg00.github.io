@@ -98,28 +98,26 @@
   @media (max-width: 46rem){ .term-panels{ grid-template-columns: 1fr; } }
 
   .term-graph-box{ background:#050a06; border:1px solid #1f3826; border-radius:4px; padding:.5rem; }
-  #term-graph svg{ width:100%; height:auto; display:block; }
+  .term-graph-box svg{ width:100%; height:auto; display:block; }
 
   .term-stats{ display:grid; grid-template-columns: repeat(2, 1fr); gap:.6rem; align-content:start; }
   .term-stat{ background:#0d1810; border:1px solid #1f3826; border-radius:4px; padding:.55rem .6rem; }
   .term-stat .tl{ font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; color:#4f9d5f; }
-  .term-stat .tv{ font-family:'Special Elite', monospace; font-size:1.2rem; color:#c8ffd6; display:block; margin-top:.15rem; }
+  .term-stat .tv{ font-family:'Special Elite', monospace; font-size:1.2rem; color:#c8ffd6; display:block; margin-top:.15rem; transform-origin: left center; }
   .term-stat.wide{ grid-column: 1 / -1; }
 
   @keyframes flash-up{
-    0%{ color:#eafff0; text-shadow:0 0 10px #7CFFB2, 0 0 18px #4ffb84; transform:scale(1.18); }
-    100%{ color:#c8ffd6; text-shadow:none; transform:scale(1); }
+    0%{ color:#eafff0; text-shadow:0 0 10px #7CFFB2, 0 0 18px #4ffb84; transform: scale(1.18) translateX(2px); }
+    60%{ transform: scale(1.05) translateX(1px); }
+    100%{ color:#c8ffd6; text-shadow:none; transform: scale(1) translateX(0); }
   }
   @keyframes flash-down{
-    0%{ color:#ffe3df; text-shadow:0 0 10px #e35b52, 0 0 18px #9c2b21; transform:scale(1.18); }
-    100%{ color:#c8ffd6; text-shadow:none; transform:scale(1); }
+    0%{ color:#ffe3df; text-shadow:0 0 10px #e35b52, 0 0 18px #9c2b21; transform: scale(1.18) translateX(2px); }
+    60%{ transform: scale(1.05) translateX(1px); }
+    100%{ color:#c8ffd6; text-shadow:none; transform: scale(1) translateX(0); }
   }
-  @keyframes flash-shake{
-    0%,100%{ transform:translateX(0); } 20%{ transform:translateX(-2px); } 40%{ transform:translateX(2px); }
-    60%{ transform:translateX(-1px); } 80%{ transform:translateX(1px); }
-  }
-  .flash-up{ animation: flash-up .5s ease-out, flash-shake .35s ease-out; }
-  .flash-down{ animation: flash-down .5s ease-out, flash-shake .35s ease-out; }
+  .flash-up{ animation: flash-up .5s ease-out; }
+  .flash-down{ animation: flash-down .5s ease-out; }
   .flash-flat{ animation: flash-up .5s ease-out; }
 
   .term-log{
@@ -325,14 +323,117 @@
 
   <hr class="wlf-hr">
 
+  <h2>Case Analysis I &mdash; Random, Barabási&ndash;Albert, or neither?</h2>
+  <p>
+    The single log&ndash;log slope estimated above is a start, not a verdict &mdash; 303 points is a small sample
+    to hang a power-law exponent on, and one straight line hides whether that slope actually holds steady
+    anywhere. This panel checks the harder way: it computes Marvel's degree CCDF (the complementary cumulative
+    distribution, P(K&nbsp;&ge;&nbsp;k) &mdash; unlike a binned histogram it needs no bin width and is defined at
+    every k), then tracks how the <em>local</em> slope of that curve moves as k increases. Barabási&ndash;Albert
+    theory predicts a local CCDF slope that holds flat near &minus;2 over a wide range; a random graph with no
+    heavy tail falls off a cliff almost immediately instead.
+  </p>
+  <div class="terminal">
+    <div class="terminal-titlebar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">AGENCY TOOLKIT — degree-classifier.exe</span>
+    </div>
+    <div class="terminal-body">
+      <p class="term-intro">CASE ANALYSIS I // DEGREE CLASSIFIER v1.0 — is it random, BA, or neither?<span class="cursor"></span></p>
+      <div class="term-actions">
+        <button class="term-btn" id="classifier-run-btn">RUN CLASSIFIER SCAN</button>
+      </div>
+      <div class="term-panels">
+        <div class="term-graph-box"><div id="chart-ccdf"></div></div>
+        <div class="term-graph-box"><div id="chart-slope"></div></div>
+      </div>
+      <div class="term-log" id="classifier-log"></div>
+    </div>
+  </div>
+  <div class="finding" id="finding-classifier"></div>
+
+  <hr class="wlf-hr">
+
+  <h2>Case Analysis II &mdash; The friendship paradox</h2>
+  <p>
+    On average, your friends have more friends than you do &mdash; not because you picked unpopular friends, but
+    because popular characters simply show up in more people's friend lists than they'd otherwise deserve. It's a
+    pure sampling effect, and it should show up in Marvel's wiki-link network too. This panel computes it exactly
+    (a closed-form ratio over the degree sequence, no sampling needed for that part), draws a fresh random sample
+    of (character, random co-linked character) pairs to see it directly, and asks two follow-ups: who are the
+    specific popular characters driving the effect, and is there anyone in the network who is never the
+    less-popular one in a connection &mdash; a character nobody out-popularity-ies?
+  </p>
+  <div class="terminal">
+    <div class="terminal-titlebar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">AGENCY TOOLKIT — friendship-audit.exe</span>
+    </div>
+    <div class="terminal-body">
+      <p class="term-intro">CASE ANALYSIS II // FRIENDSHIP AUDIT v1.0 — who's more popular than their friends?<span class="cursor"></span></p>
+      <div class="term-actions">
+        <button class="term-btn" id="fp-run-btn">RUN FRIENDSHIP AUDIT</button>
+      </div>
+      <div class="term-panels">
+        <div class="term-graph-box"><div id="chart-fp-scatter"></div></div>
+        <div class="term-stats">
+          <div class="term-stat"><span class="tl">Avg degree &lang;k&rang;</span><span class="tv" id="fp-avgk">—</span></div>
+          <div class="term-stat"><span class="tl">Avg friend degree</span><span class="tv" id="fp-avgfriend">—</span></div>
+          <div class="term-stat wide"><span class="tl">Paradox ratio</span><span class="tv" id="fp-ratio">—</span></div>
+          <div class="term-stat wide"><span class="tl">Never out-popularity-ed</span><span class="tv" id="fp-champions">—</span></div>
+        </div>
+      </div>
+      <div class="term-log" id="fp-log"></div>
+    </div>
+  </div>
+  <div class="finding" id="finding-fp"></div>
+
+  <hr class="wlf-hr">
+
+  <h2>Case Analysis III &mdash; Chain of custody: does clustering survive a shuffle?</h2>
+  <p>
+    Marvel's clustering coefficient is high &mdash; but so is its degree sequence's variance, and a few hub
+    characters alone can inflate clustering without any real "friends know each other" effect underneath. The
+    only way to tell a wiring fact from a degree-sequence fact is to destroy the wiring while keeping the degree
+    sequence exactly fixed, and see what's left standing. This toolkit performs a degree-preserving
+    double-edge-swap shuffle &mdash; the same edges, reattached between random pairs of endpoints so every
+    character keeps precisely as many links as before &mdash; twenty times, and plots where the real network's
+    clustering coefficient falls against that null distribution.
+  </p>
+  <div class="terminal">
+    <div class="terminal-titlebar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">AGENCY TOOLKIT — chain-of-custody.exe</span>
+    </div>
+    <div class="terminal-body">
+      <p class="term-intro">CASE ANALYSIS III // CHAIN OF CUSTODY v1.0 — degree-preserving shuffle test<span class="cursor"></span></p>
+      <div class="term-actions">
+        <button class="term-btn" id="shuffle-run-btn">RUN SHUFFLE TEST (20x)</button>
+      </div>
+      <div class="term-panels">
+        <div class="term-graph-box"><div id="chart-shuffle"></div></div>
+        <div class="term-stats">
+          <div class="term-stat"><span class="tl">Real C</span><span class="tv" id="sh-real">—</span></div>
+          <div class="term-stat"><span class="tl">Null mean</span><span class="tv" id="sh-mean">—</span></div>
+          <div class="term-stat"><span class="tl">Null SD</span><span class="tv" id="sh-sd">—</span></div>
+          <div class="term-stat"><span class="tl">z-score</span><span class="tv" id="sh-z">—</span></div>
+        </div>
+      </div>
+      <div class="term-log" id="shuffle-log"></div>
+    </div>
+  </div>
+  <div class="finding" id="finding-shuffle"></div>
+
+  <hr class="wlf-hr">
+
   <h2>Discussion</h2>
   <p>
     The toolkit's real punchline is negative evidence: uniform growth and static random both fail to produce
     anything resembling Marvel's hub, even matched exactly on nodes and links. That rules two ingredients
     <em>in</em> as necessary &mdash; growth and preference together &mdash; without yet proving they're
-    <em>sufficient</em>, which is exactly the gap the null-model and shuffle-test material this week is built
-    to close: matching a real network on a couple of summary statistics is a much weaker claim than matching
-    its generative process.
+    <em>sufficient</em> &mdash; that's exactly the gap Case Analysis III's shuffle test above closes: matching a
+    real network on a couple of summary statistics is a much weaker claim than matching its generative process,
+    and clustering there turned out not to survive being decoupled from Marvel's actual wiring.
   </p>
 
   <p class="wlf-muted">
