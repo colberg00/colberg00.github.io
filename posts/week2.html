@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case No. 02 — Built, Not Born</title>
+<meta name="description" content="Grow three synthetic networks — preferential attachment, uniform growth, and static random — with the Agency's Field Toolkit and see which recipe actually produces a Marvel-sized hub. Week 2 case file for 02805 Social Graphs and Interactions.">
+<link rel="stylesheet" href="../assets/theme.css">
+<style>
+  .case-header{ text-align: center; padding: .5rem 0 2rem; }
+  .case-header .wlf-case-no{ display:block; margin-bottom:.4rem; }
+  .case-header h1{ font-size: 2.1rem; margin: 0 0 .6rem; }
+  .case-header p{ color: var(--ink-soft); max-width: 42rem; margin: 0 auto; }
+
+  .briefing{ display:grid; grid-template-columns: repeat(auto-fit,minmax(11rem,1fr)); gap: .9rem; margin: 1.75rem 0; }
+  .briefing .stat{ text-align:center; background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: .9rem .5rem; }
+  .briefing .stat .n{ font-family:'Special Elite',monospace; font-size:1.6rem; color: var(--red); display:block; }
+  .briefing .stat .l{ font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color: var(--ink-faint); }
+
+  /* ================= TERMINAL / TOOLKIT ================= */
+  .terminal{
+    background: #0a120c;
+    border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(0,0,0,.55), 0 0 0 1px #1c2e20;
+    overflow: hidden;
+    margin: 1.75rem 0 2.5rem;
+  }
+  .terminal-titlebar{
+    background: linear-gradient(180deg, #1c2b1f, #121c15);
+    padding: .55rem .9rem;
+    display:flex; align-items:center; gap:.5rem;
+    border-bottom: 1px solid #24382a;
+  }
+  .terminal-dots{ display:flex; gap:.35rem; }
+  .terminal-dots span{ width:.6rem; height:.6rem; border-radius:50%; display:inline-block; }
+  .terminal-dots span:nth-child(1){ background:#a95149; }
+  .terminal-dots span:nth-child(2){ background:#c9a24a; }
+  .terminal-dots span:nth-child(3){ background:#4f9d5f; }
+  .terminal-title{
+    font-family:'Courier Prime', monospace; font-size:.78rem; color:#8fd9a0;
+    letter-spacing:.06em; margin-left:.4rem;
+  }
+  .terminal-body{
+    position: relative;
+    padding: 1.1rem 1.2rem 1.4rem;
+    color: #7CFFB2;
+    font-family: 'Courier Prime', monospace;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 3px),
+      radial-gradient(ellipse at top, rgba(79,251,132,0.05), transparent 60%);
+  }
+  .terminal-body::after{
+    content:"";
+    position:absolute; inset:0;
+    pointer-events:none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.09) 0px, rgba(0,0,0,0.09) 1px, transparent 2px, transparent 4px);
+    mix-blend-mode: multiply;
+    opacity:.35;
+  }
+  .terminal-body p, .terminal-body h4{ position: relative; z-index: 1; }
+  .terminal-body h4{
+    font-family:'Special Elite', monospace; color:#bff5cc; font-size:.95rem;
+    margin: 1.1rem 0 .5rem; text-transform: uppercase; letter-spacing:.06em;
+  }
+  .term-intro{ font-size:.86rem; color:#9fe8ae; margin: 0 0 1rem; }
+  .term-intro .cursor{
+    display:inline-block; width:.55em; height:1em; background:#7CFFB2; vertical-align:-.15em;
+    animation: term-blink 1s steps(1) infinite;
+  }
+  @keyframes term-blink{ 50%{ opacity:0; } }
+
+  .mode-row{ display:flex; flex-wrap:wrap; gap:.6rem; align-items:center; position:relative; z-index:1; }
+  .mode-btn{
+    font-family:'Courier Prime', monospace; font-size:.82rem; letter-spacing:.03em;
+    background: transparent; color:#7CFFB2; border:1px solid #2f6b46; border-radius:2px;
+    padding:.5rem .8rem; cursor:pointer;
+  }
+  .mode-btn:hover{ border-color:#4ffb84; }
+  .mode-btn.active{ background:#173321; border-color:#4ffb84; color:#c8ffd6; box-shadow: 0 0 8px rgba(79,251,132,.35) inset; }
+  .mode-btn:disabled{ opacity:.4; cursor:not-allowed; }
+
+  .term-actions{ display:flex; flex-wrap:wrap; gap:.6rem; margin-top: .8rem; position:relative; z-index:1; }
+  .term-btn{
+    font-family:'Special Elite', monospace; font-size:.85rem;
+    background:#123a1e; color:#c8ffd6; border:1px solid #4ffb84; border-radius:2px;
+    padding:.5rem 1rem; cursor:pointer; letter-spacing:.03em;
+  }
+  .term-btn:hover{ background:#184a27; }
+  .term-btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .term-btn.ghost{ background:transparent; color:#8fd9a0; border-color:#2f6b46; }
+  .term-btn.amber{ border-color:#c9a24a; color:#ffe6a6; }
+  .term-btn.amber:hover{ background:#3a2c12; }
+
+  .term-tracker{ list-style:none; padding:0; margin: .7rem 0 0; display:flex; gap:1.2rem; flex-wrap:wrap; font-size:.78rem; color:#5f9c72; position:relative; z-index:1; }
+  .term-tracker li.done{ color:#c8ffd6; }
+
+  .term-panels{ display:grid; grid-template-columns: 1.15fr 1fr; gap: 1.1rem; margin-top: 1.1rem; position:relative; z-index:1; }
+  @media (max-width: 46rem){ .term-panels{ grid-template-columns: 1fr; } }
+
+  .term-graph-box{ background:#050a06; border:1px solid #1f3826; border-radius:4px; padding:.5rem; }
+  #term-graph svg{ width:100%; height:auto; display:block; }
+
+  .term-stats{ display:grid; grid-template-columns: repeat(2, 1fr); gap:.6rem; align-content:start; }
+  .term-stat{ background:#0d1810; border:1px solid #1f3826; border-radius:4px; padding:.55rem .6rem; }
+  .term-stat .tl{ font-size:.66rem; text-transform:uppercase; letter-spacing:.08em; color:#4f9d5f; }
+  .term-stat .tv{ font-family:'Special Elite', monospace; font-size:1.2rem; color:#c8ffd6; display:block; margin-top:.15rem; }
+  .term-stat.wide{ grid-column: 1 / -1; }
+
+  @keyframes flash-up{
+    0%{ color:#eafff0; text-shadow:0 0 10px #7CFFB2, 0 0 18px #4ffb84; transform:scale(1.18); }
+    100%{ color:#c8ffd6; text-shadow:none; transform:scale(1); }
+  }
+  @keyframes flash-down{
+    0%{ color:#ffe3df; text-shadow:0 0 10px #e35b52, 0 0 18px #9c2b21; transform:scale(1.18); }
+    100%{ color:#c8ffd6; text-shadow:none; transform:scale(1); }
+  }
+  @keyframes flash-shake{
+    0%,100%{ transform:translateX(0); } 20%{ transform:translateX(-2px); } 40%{ transform:translateX(2px); }
+    60%{ transform:translateX(-1px); } 80%{ transform:translateX(1px); }
+  }
+  .flash-up{ animation: flash-up .5s ease-out, flash-shake .35s ease-out; }
+  .flash-down{ animation: flash-down .5s ease-out, flash-shake .35s ease-out; }
+  .flash-flat{ animation: flash-up .5s ease-out; }
+
+  .term-log{
+    margin-top:1rem; height:8.5rem; overflow-y:auto; background:#050a06; border:1px solid #1f3826;
+    border-radius:4px; padding:.6rem .7rem; font-size:.78rem; line-height:1.55; position:relative; z-index:1;
+  }
+  .tline{ color:#6fce85; white-space:pre-wrap; }
+  .tline-done{ color:#ffe6a6; }
+
+  /* printout finale — light paper content inside the dark terminal frame */
+  .term-printout{
+    background: var(--paper-alt);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    color: var(--ink);
+    padding: 1.1rem 1.2rem 1.3rem;
+    margin-top: 1.2rem;
+    position: relative; z-index: 1;
+  }
+  .term-printout h4{ color: var(--ink); font-family:'Special Elite',monospace; font-size:.9rem; margin: 0 0 .7rem; text-transform:none; letter-spacing:.02em; }
+  .printout-feed{ font-family:'Courier Prime',monospace; font-size:.78rem; color: var(--ink-soft); margin: 0 0 .8rem; }
+
+  .comparison-table{ width:100%; border-collapse: collapse; font-size:.85rem; }
+  .comparison-table th, .comparison-table td{ padding:.45rem .5rem; border-bottom:1px solid var(--line); text-align:right; }
+  .comparison-table th:first-child, .comparison-table td:first-child{ text-align:left; }
+  .comparison-table thead th{ font-family:'Special Elite',monospace; font-weight:normal; color: var(--ink-faint); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }
+  .comparison-table td.empty, tr.empty-row td{ color: var(--ink-faint); font-style:italic; }
+
+  .chart-box{ background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
+  .chart-box svg{ width:100%; height:auto; display:block; }
+  .chart-caption{ font-size:.8rem; color: var(--ink-faint); margin-top:.5rem; text-align:center; }
+
+  .hist-grid{ display:grid; grid-template-columns: repeat(4, 1fr); gap:.7rem; margin-top: .9rem; }
+  @media (max-width: 46rem){ .hist-grid{ grid-template-columns: repeat(2, 1fr); } }
+  .hist-cell{ background: var(--paper); border:1px dashed var(--line); border-radius: var(--radius); padding:.5rem; }
+  .hist-cell .hc-label{ font-size:.72rem; text-align:center; color: var(--ink-soft); margin-bottom:.3rem; }
+  .hist-cell svg{ width:100%; height:auto; display:block; }
+
+  .finding{
+    background: var(--paper-alt); border-left: 4px solid var(--red);
+    padding: .9rem 1.1rem; margin: 1rem 0; font-size: .95rem;
+  }
+</style>
+</head>
+<body class="wlf">
+
+<div class="wlf-masthead">
+  <div class="wlf-masthead-inner">
+    <a class="wlf-brand" href="../index.html">THE WIKI-LINK FILES
+      <small>An investigation unit &middot; est. 2026</small>
+    </a>
+    <nav class="wlf-nav">
+      <a href="../index.html">Agency HQ</a>
+      <a href="week1.html">Case No. 01</a>
+      <a href="week2.html">Case No. 02</a>
+      <a href="https://github.com/colberg00/colberg00.github.io">Source</a>
+    </nav>
+  </div>
+</div>
+
+<main class="wlf-main">
+
+  <div class="case-header">
+    <span class="wlf-stamp">Case No. 02 &middot; Open</span>
+    <h1>Built, Not Born</h1>
+    <p>
+      Marvel's wiki-link network has hubs &mdash; a handful of characters everyone points to. Were they
+      always going to end up that way, or does that structure have to be <em>built</em>, link by link, by a
+      specific recipe? The Agency's new Field Toolkit lets you grow three candidate recipes from scratch and
+      watch, live, which one actually manufactures a hub.
+    </p>
+  </div>
+
+  <h2>Research question</h2>
+  <p>
+    A network doesn't have to be born with hubs &mdash; it can grow into having them, or not, depending on two
+    separate ingredients: whether it grows at all (new nodes arriving over time, vs. all nodes existing from
+    the start), and whether new links prefer already-popular targets. Which combination of those two
+    ingredients, grown to the same size as the real Marvel network, actually reproduces something that looks
+    like it &mdash; a heavy-tailed degree distribution with a real hub at the top &mdash; and which
+    combinations obviously can't?
+  </p>
+
+  <h2>Method, in one paragraph</h2>
+  <p class="wlf-muted">
+    The toolkit below grows two networks node-by-node to Marvel's exact roster size (303 files): one using
+    <strong>preferential attachment</strong> (growth + a bias toward already-popular files, à la
+    Barabási&ndash;Albert), and one using <strong>uniform growth</strong> (the same growth process, but new
+    links land on a uniformly random existing file). A third, <strong>static random</strong> network
+    (Erdős&ndash;Rényi) skips growth entirely &mdash; all 303 files exist from frame one, and links are
+    assigned independently at a fixed probability. All three target the same number of links as the real
+    network, so the comparison below is apples-to-apples on everything except the ingredient being tested.
+  </p>
+
+  <div class="briefing">
+    <div class="stat"><span class="n" id="stat-nodes">&hellip;</span><span class="l">Characters (target n)</span></div>
+    <div class="stat"><span class="n" id="stat-edges">&hellip;</span><span class="l">Wiki-links (target m)</span></div>
+    <div class="stat"><span class="n" id="stat-avgk">&hellip;</span><span class="l">Avg degree &lang;k&rang;</span></div>
+    <div class="stat"><span class="n" id="stat-clustering">&hellip;</span><span class="l">Avg clustering C</span></div>
+    <div class="stat"><span class="n" id="stat-pathlen">&hellip;</span><span class="l">Avg path length</span></div>
+    <div class="stat"><span class="n" id="stat-maxdeg">&hellip;</span><span class="l">Max degree (real hub)</span></div>
+  </div>
+
+  <h2>The Field Toolkit</h2>
+  <p>
+    First deployment of a recurring Agency gadget: a network synthesizer, built for this case and kept around
+    for whichever future ones need it. Pick a growth recipe, run it, and watch the stat readout for the
+    moment a hub either does or doesn't start pulling away from the pack.
+  </p>
+
+  <div class="terminal">
+    <div class="terminal-titlebar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">AGENCY TOOLKIT — network-synth.exe</span>
+    </div>
+    <div class="terminal-body">
+      <p class="term-intro">FIELD TOOLKIT // NETWORK SYNTHESIZER v1.0 — select a growth recipe and execute<span class="cursor"></span></p>
+
+      <div class="mode-row">
+        <button class="mode-btn" data-mode="preferential">[ PREFERENTIAL ]</button>
+        <button class="mode-btn" data-mode="uniform">[ UNIFORM ]</button>
+        <button class="mode-btn" data-mode="random">[ STATIC RANDOM ]</button>
+      </div>
+
+      <div class="term-actions">
+        <button class="term-btn" id="execute-btn">EXECUTE</button>
+        <button class="term-btn ghost" id="skip-btn" hidden>SKIP ANIMATION</button>
+        <button class="term-btn amber" id="scaleup-btn" hidden>FAST-FORWARD TO n=5,000</button>
+      </div>
+
+      <ul class="term-tracker">
+        <li id="track-preferential">[ ] PREFERENTIAL ATTACHMENT</li>
+        <li id="track-uniform">[ ] UNIFORM GROWTH</li>
+        <li id="track-random">[ ] STATIC RANDOM</li>
+      </ul>
+
+      <div class="term-panels">
+        <div class="term-graph-box"><div id="term-graph"></div></div>
+        <div class="term-stats">
+          <div class="term-stat"><span class="tl">Files</span><span class="tv" id="tstat-nodes">0</span></div>
+          <div class="term-stat"><span class="tl">Links</span><span class="tv" id="tstat-edges">0</span></div>
+          <div class="term-stat"><span class="tl">Max degree</span><span class="tv" id="tstat-maxdeg">0</span></div>
+          <div class="term-stat"><span class="tl">Avg clustering</span><span class="tv" id="tstat-avgc">0.000</span></div>
+          <div class="term-stat"><span class="tl">Giant component</span><span class="tv" id="tstat-giant">0%</span></div>
+          <div class="term-stat wide"><span class="tl">Current leader</span><span class="tv" id="tstat-leader">—</span></div>
+        </div>
+      </div>
+
+      <div class="term-log" id="term-log"></div>
+
+      <div class="term-printout">
+        <h4>Case cross-reference — vs. MARVEL_303.dat</h4>
+        <p class="printout-feed">&gt; retrieving real network statistics... &gt; rendering comparison ledger...</p>
+        <div style="overflow-x:auto">
+          <table class="comparison-table">
+            <thead>
+              <tr><th>Case file</th><th>n</th><th>m</th><th>&lang;k&rang;</th><th>C</th><th>&lang;d&rang;</th><th>max deg</th></tr>
+            </thead>
+            <tbody id="comparison-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Behind the case files &mdash; reading the results</h2>
+  <p>
+    Everything below updates live as you run each recipe above &mdash; the charts and findings fill in one
+    case at a time.
+  </p>
+
+  <h3>Degree distribution, log&ndash;log</h3>
+  <p class="wlf-muted">
+    Same axes as Case No. 01's hub chart, now with every recipe overlaid. A recipe that produces a hub shows
+    a long tail stretching to the right; a recipe that doesn't clusters tightly instead.
+  </p>
+  <div class="chart-box">
+    <div id="chart-loglog-multi"></div>
+    <div class="chart-caption">Degree distribution &mdash; log&ndash;log, all cases overlaid</div>
+  </div>
+
+  <div class="finding" id="finding-recipe"></div>
+
+  <h3>Degree distribution, linear, side by side</h3>
+  <div class="hist-grid">
+    <div class="hist-cell"><div class="hc-label">MARVEL_303 (real)</div><div id="hist-marvel"></div></div>
+    <div class="hist-cell"><div class="hc-label">Preferential attachment</div><div id="hist-preferential"></div></div>
+    <div class="hist-cell"><div class="hc-label">Uniform growth</div><div id="hist-uniform"></div></div>
+    <div class="hist-cell"><div class="hc-label">Static random</div><div id="hist-random"></div></div>
+  </div>
+
+  <div class="finding" id="finding-clustering"></div>
+
+  <h3>Scaling up: does the slope firm up at n=5,000?</h3>
+  <p class="wlf-muted">
+    303 points is a noisy sample to eyeball a power-law exponent from. The FAST-FORWARD command above grows a
+    fresh preferential-attachment network straight to 5,000 nodes (no animation, just the numbers) and adds
+    it to the log&ndash;log chart above as a fifth series.
+  </p>
+  <div class="finding" id="finding-scaleup"></div>
+
+  <hr class="wlf-hr">
+
+  <h2>Discussion</h2>
+  <p>
+    The toolkit's real punchline is negative evidence: uniform growth and static random both fail to produce
+    anything resembling Marvel's hub, even matched exactly on nodes and links. That rules two ingredients
+    <em>in</em> as necessary &mdash; growth and preference together &mdash; without yet proving they're
+    <em>sufficient</em>, which is exactly the gap the null-model and shuffle-test material this week is built
+    to close: matching a real network on a couple of summary statistics is a much weaker claim than matching
+    its generative process.
+  </p>
+
+  <p class="wlf-muted">
+    Everything above runs client-side, generated fresh every time you hit EXECUTE &mdash; re-run any recipe as
+    many times as you like, the randomness is real. Filed under the same investigation unit as
+    <a href="week1.html">Case No. 01</a>, whose TSVs this case file borrows for its ground truth.
+  </p>
+
+</main>
+
+<footer class="wlf-footer">
+  Case No. 02 &middot; 02805 Social Graphs and Interactions &middot; Technical University of Denmark
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="../assets/week2.js"></script>
+</body>
+</html>
