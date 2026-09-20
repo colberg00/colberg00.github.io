@@ -169,9 +169,14 @@
     </a>
     <nav class="wlf-nav">
       <a href="../index.html">Agency HQ</a>
-      <a href="week1.html">Case No. 01</a>
-      <a href="week2.html">Case No. 02</a>
-      <a href="week3.html">Case No. 03</a>
+      <details class="wlf-cases">
+        <summary>Case files</summary>
+        <div class="wlf-cases-menu">
+          <a href="week1.html"><strong>Case No. 01</strong> The Marvel Manhunt</a>
+          <a href="week2.html"><strong>Case No. 02</strong> Built, Not Born</a>
+          <a href="week3.html" class="current" aria-current="page"><strong>Case No. 03</strong> Person of Interest</a>
+        </div>
+      </details>
       <a href="https://github.com/colberg00/colberg00.github.io">Source</a>
     </nav>
   </div>
@@ -428,5 +433,6 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <script src="../assets/week3.js"></script>
+<script src="../assets/nav.js"></script>
 </body>
 </html>

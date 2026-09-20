@@ -82,9 +82,71 @@ body.wlf{
   letter-spacing: .18em;
   margin-top: .15rem;
 }
-.wlf-nav{ display: flex; gap: 1.25rem; font-size: .85rem; }
+.wlf-nav{ display: flex; gap: 1.25rem; font-size: .85rem; align-items: baseline; }
 .wlf-nav a{ color: #d8c691; text-decoration: none; border-bottom: 1px dotted transparent; }
 .wlf-nav a:hover{ border-bottom-color: #d8c691; }
+
+/* ---------- case-files dropdown ----------
+   A native <details>, so it opens, closes and takes the keyboard without any
+   script; assets/nav.js only adds click-outside and Escape. */
+.wlf-cases{ position: relative; }
+.wlf-cases > summary{
+  color: #d8c691;
+  cursor: pointer;
+  list-style: none;
+  border-bottom: 1px dotted transparent;
+  user-select: none;
+}
+.wlf-cases > summary::-webkit-details-marker{ display: none; }
+.wlf-cases > summary::after{ content: " \25BE"; font-size: .85em; margin-left: .15em; }
+.wlf-cases[open] > summary::after{ content: " \25B4"; }
+.wlf-cases > summary:hover,
+.wlf-cases[open] > summary{ border-bottom-color: #d8c691; }
+.wlf-cases > summary:focus-visible{ outline: 1px dotted #d8c691; outline-offset: 3px; }
+
+.wlf-cases-menu{
+  /* The nav sits at the right of the masthead, so the panel hangs from the
+     trigger's right edge; when the nav wraps to the left on a narrow screen the
+     media query below flips it. */
+  position: absolute;
+  top: calc(100% + .7rem);
+  right: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 16.5rem;
+  padding: .3rem 0;
+  background: #1a1512;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 24px rgba(0,0,0,.5);
+}
+.wlf-cases-menu a{
+  padding: .5rem .85rem;
+  border-bottom: none;
+  white-space: nowrap;
+  color: #c9b78a;
+}
+.wlf-cases-menu a strong{
+  font-family: 'Special Elite', monospace;
+  font-weight: normal;
+  color: #f1e6c8;
+  margin-right: .35rem;
+}
+.wlf-cases-menu a:hover{ background: #2a2119; border-bottom: none; }
+.wlf-cases-menu a.current{ background: #241d16; }
+.wlf-cases-menu a.current strong{ color: var(--gold); }
+
+@media (max-width: 34rem){
+  .wlf-cases-menu{
+    right: auto;
+    left: 0;
+    min-width: 15rem;
+    max-width: calc(100vw - 2rem);
+  }
+  .wlf-cases-menu a{ white-space: normal; }
+  .wlf-cases-menu a strong{ display: block; margin-right: 0; }
+}
 
 /* ---------- layout ---------- */
 .wlf-main{ max-width: 64rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem; }
