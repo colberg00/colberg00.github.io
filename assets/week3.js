@@ -24,6 +24,7 @@
   const SHUFFLES = 200; // degree-preserving shuffles per alibi check
   const SWAPS_PER_LINK = 10; // Maslov–Sneppen rule of thumb
   const CLIQUE_FLOOR = 5; // the smallest clique worth naming
+  const FAMILY_OVERLAP = 0.6; // how much two cliques must share to count as one group
   const CLIQUE_NULL_RUNS = 200; // shuffles also scanned for cliques (a scan costs a few ms)
   const LABEL_SHUFFLES = 1000; // permutations behind each homophily figure
   const HUB = "Spider-Man"; // the character every chain is traced to
@@ -201,6 +202,64 @@
     return { betweenness, closeness, harmonic };
   }
 
+  // Eigenvector centrality: a character counts for more when the characters
+  // linking to them count for more. Circular, but it settles — start everyone
+  // equal, replace each score with the sum of their neighbours' scores, rescale,
+  // repeat. What it converges on is the leading eigenvector of the adjacency
+  // matrix, and the factor it grows by each round is the leading eigenvalue.
+  // The iteration adds the old score back in (the "I + A" form networkx uses),
+  // which cannot change the answer and keeps it from oscillating.
+  function eigenvectorCentrality(adj, maxIter, tol) {
+    maxIter = maxIter || 5000;
+    tol = tol || 1e-12;
+    const n = adj.length;
+    let x = new Float64Array(n).fill(1 / Math.sqrt(n));
+    for (let iter = 0; iter < maxIter; iter++) {
+      const next = Float64Array.from(x);
+      for (let v = 0; v < n; v++) for (const w of adj[v]) next[w] += x[v];
+      let norm = 0;
+      for (let i = 0; i < n; i++) norm += next[i] * next[i];
+      norm = Math.sqrt(norm) || 1;
+      let diff = 0;
+      for (let i = 0; i < n; i++) {
+        next[i] /= norm;
+        diff += Math.abs(next[i] - x[i]);
+      }
+      x = next;
+      if (diff < n * tol) break;
+    }
+    // Rayleigh quotient: how much one round of passing scores around multiplies
+    // the vector by, i.e. the leading eigenvalue.
+    let quotient = 0;
+    for (let v = 0; v < n; v++) for (const w of adj[v]) quotient += x[v] * x[w];
+    return { scores: x, eigenvalue: quotient };
+  }
+
+  // Rank correlation, for comparing two rankings that disagree about the middle
+  // but not about the ends.
+  function spearman(a, b) {
+    const ra = ranksDescending(a);
+    const rb = ranksDescending(b);
+    const n = a.length;
+    let ma = 0;
+    let mb = 0;
+    for (let i = 0; i < n; i++) {
+      ma += ra[i];
+      mb += rb[i];
+    }
+    ma /= n;
+    mb /= n;
+    let num = 0;
+    let da = 0;
+    let db = 0;
+    for (let i = 0; i < n; i++) {
+      num += (ra[i] - ma) * (rb[i] - mb);
+      da += (ra[i] - ma) ** 2;
+      db += (rb[i] - mb) ** 2;
+    }
+    return num / Math.sqrt(da * db);
+  }
+
   // PageRank on the directed network. Pages with no out-links would otherwise
   // leak their score out of the system every iteration, so their score is
   // spread over all nodes, which is what networkx does by default.
@@ -308,6 +367,56 @@
 
     expand(d3.range(n), []);
     return { omega, countAtLeast, kept };
+  }
+
+  // Maximal cliques overlap heavily: swap one member of a group of eight and the
+  // result is another perfectly good maximal clique with almost the same cast.
+  // Listed raw, one group fills the whole table. This collects the near-copies
+  // into families — a clique joins the first family whose largest line-up it
+  // shares at least `threshold` of the combined membership with — and reports
+  // each family as that largest line-up plus the characters who appear in its
+  // variants. Cliques are sorted first (biggest, then by membership) so the
+  // families do not depend on the order the enumerator happened to find them,
+  // and matching against the family's largest line-up rather than its growing
+  // membership stops unrelated groups from chaining into one blob.
+  function cliqueFamilies(cliques, threshold) {
+    const sorted = cliques
+      .map((c) => c.slice().sort((a, b) => a - b))
+      .sort((a, b) => {
+        if (a.length !== b.length) return b.length - a.length;
+        for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i];
+        return 0;
+      });
+
+    const families = [];
+    sorted.forEach((clique) => {
+      const set = new Set(clique);
+      let home = null;
+      for (const family of families) {
+        let shared = 0;
+        family.set.forEach((v) => {
+          if (set.has(v)) shared++;
+        });
+        if (shared / (family.set.size + set.size - shared) >= threshold) {
+          home = family;
+          break;
+        }
+      }
+      if (home) {
+        home.variants++;
+        clique.forEach((v) => home.union.add(v));
+      } else {
+        families.push({ lineup: clique, set, variants: 1, union: new Set(clique) });
+      }
+    });
+
+    return families.map((f) => ({
+      size: f.lineup.length,
+      variants: f.variants,
+      lineup: f.lineup,
+      swaps: Array.from(f.union).filter((v) => !f.set.has(v)),
+      members: Array.from(f.union),
+    }));
   }
 
   // Newman's assortativity for a categorical attribute: the share of links that
@@ -772,6 +881,74 @@
       .text(`z-score vs ${SHUFFLES} shuffles`);
   }
 
+  // Giant component as characters are removed in a chosen order.
+  function drawRemoval(el, series) {
+    const w = 640;
+    const h = 360;
+    const m = { top: 18, right: 130, bottom: 44, left: 52 };
+    const svg = svgRoot(el, w, h);
+    const keys = Object.keys(series);
+    const maxRemoved = d3.max(keys, (k) => series[k].length - 1);
+    const x = d3.scaleLinear().domain([0, maxRemoved]).range([m.left, w - m.right]);
+    const y = d3.scaleLinear().domain([0, 1]).range([h - m.bottom, m.top]);
+
+    svg.append("g").attr("transform", `translate(0,${h - m.bottom})`).call(d3.axisBottom(x).ticks(7)).call(axisStyle);
+    svg.append("g").attr("transform", `translate(${m.left},0)`).call(d3.axisLeft(y).ticks(6, "%")).call(axisStyle);
+
+    const colors = {
+      betweenness: RED,
+      degree: BLUE,
+      pagerank: "#6b4f14",
+      random: INK_FAINT,
+    };
+    const labels = {
+      betweenness: "by betweenness",
+      degree: "by degree",
+      pagerank: "by PageRank",
+      random: "at random",
+    };
+
+    keys.forEach((k) => {
+      svg
+        .append("path")
+        .attr("fill", "none")
+        .attr("stroke", colors[k] || INK)
+        .attr("stroke-width", 1.8)
+        .attr("d", d3.line().x((d, i) => x(i)).y((d) => y(d))(series[k]));
+    });
+
+    const legend = svg.append("g").attr("transform", `translate(${w - m.right + 12},${m.top + 6})`);
+    keys.forEach((k, i) => {
+      legend.append("line").attr("x1", 0).attr("x2", 16).attr("y1", i * 18).attr("y2", i * 18).attr("stroke", colors[k] || INK).attr("stroke-width", 2);
+      legend
+        .append("text")
+        .attr("x", 21)
+        .attr("y", i * 18 + 3.5)
+        .attr("font-family", "Courier Prime, monospace")
+        .attr("font-size", 10)
+        .attr("fill", INK_SOFT)
+        .text(labels[k] || k);
+    });
+
+    svg
+      .append("text")
+      .attr("x", (w - m.right + m.left) / 2)
+      .attr("y", h - 8)
+      .attr("text-anchor", "middle")
+      .attr("font-family", "Courier Prime, monospace")
+      .attr("font-size", 11)
+      .attr("fill", INK_SOFT)
+      .text("characters removed");
+    svg
+      .append("text")
+      .attr("transform", `translate(14,${(h - m.bottom + m.top) / 2}) rotate(-90)`)
+      .attr("text-anchor", "middle")
+      .attr("font-family", "Courier Prime, monospace")
+      .attr("font-size", 11)
+      .attr("fill", INK_SOFT)
+      .text("giant component, share of survivors");
+  }
+
   // A null distribution drawn on the page's paper stock rather than inside the
   // terminal: same idea as the one in the interrogation room, different ink.
   function drawPaperNull(el, values, real, caption) {
@@ -880,6 +1057,7 @@
 
     const cent = centralities(gcAdj);
     const dirCent = centralities(gcDir.out, { directed: true });
+    const eigen = eigenvectorCentrality(gcAdj);
     const pr = pagerank(dir.out, dir.inn, 0.85);
 
     const attributeById = new Map((attributeRows || []).map((r) => [r.node_id, r]));
@@ -896,6 +1074,7 @@
       closeness: cent.closeness[i],
       harmonic: cent.harmonic[i],
       betweennessDir: dirCent.betweenness[i],
+      eigenvector: eigen.scores[i],
       pagerank: pr[index.get(id)],
       neighbours: gcAdj[i].map((j) => giantIds[j]),
     }));
@@ -921,7 +1100,7 @@
       zMeasure: "betweenness",
     };
 
-    ["degree", "closeness", "harmonic", "betweenness", "betweennessDir", "pagerank"].forEach((key) => {
+    ["degree", "closeness", "harmonic", "betweenness", "betweennessDir", "eigenvector", "pagerank"].forEach((key) => {
       state.ranks[key] = ranksDescending(cast.map((c) => c[key]));
     });
     cast.forEach((c, i) => {
@@ -950,6 +1129,8 @@
       diameter,
       assortativity: degreeAssortativity(gcAdj),
       topFourOverlap: null,
+      eigenvalue: eigen.eigenvalue,
+      eigenVsDegree: spearman(cast.map((c) => c.degree), cast.map((c) => c.eigenvector)),
     };
 
     // How many characters make all four top tens? The four measures here are the
@@ -987,6 +1168,7 @@
     // mixing of the two attributes the articles give us.
     state.cliqueScan = cliqueScan(gcAdj, CLIQUE_FLOOR);
     state.bigCliques = state.cliqueScan.kept;
+    state.cliqueFamilies = cliqueFamilies(state.bigCliques, FAMILY_OVERLAP);
     state.cliqueView = "biggest";
     state.homophily = {
       team: homophily(gcAdj, cast, "team", LABEL_SHUFFLES, 7),
@@ -1074,6 +1256,7 @@
     setText("rank-closeness", `#${c.rank.closeness}`);
     setText("rank-harmonic", `#${c.rank.harmonic}`);
     setText("rank-betweenness", `#${c.rank.betweenness}`);
+    setText("rank-eigenvector", `#${c.rank.eigenvector}`);
     setText("rank-pagerank", `#${c.rank.pagerank}`);
 
     const box = document.getElementById("verdict");
@@ -1261,9 +1444,9 @@
       `<strong>And the network's disassortativity is not a finding either.</strong> Marvel's degree assortativity is
        ${state.summary.assortativity.toFixed(3)}; the same ${SHUFFLES} shuffles give
        ${state.rNull.mean.toFixed(3)} ± ${state.rNull.sd.toFixed(3)}, i.e. z =
-       ${((state.summary.assortativity - state.rNull.mean) / state.rNull.sd).toFixed(1)}. Hubs link to small
-       characters here because there are not enough other hubs to go around, which is true of any heavy-tailed
-       network, not a fact about Marvel.`
+       ${((state.summary.assortativity - state.rNull.mean) / state.rNull.sd).toFixed(1)}. This is
+       <em>structural disassortativity</em>: hubs link to small characters because there are not enough other hubs
+       to go round, which is true of any heavy-tailed network and is not a fact about Marvel.`
     );
   }
 
@@ -1381,6 +1564,97 @@
   }
 
   // ---------------------------------------------------------------
+  // Pulling the thread — what breaks when characters are removed
+  // ---------------------------------------------------------------
+  function giantFractionAfterRemoval(state, order, steps) {
+    const n = state.gcAdj.length;
+    const removed = new Uint8Array(n);
+    const series = [];
+    for (let step = 0; step <= steps; step++) {
+      if (step > 0) removed[order[step - 1]] = 1;
+      const seen = new Uint8Array(n);
+      let best = 0;
+      let alive = 0;
+      for (let i = 0; i < n; i++) if (!removed[i]) alive++;
+      for (let s = 0; s < n; s++) {
+        if (removed[s] || seen[s]) continue;
+        let size = 0;
+        const queue = [s];
+        seen[s] = 1;
+        for (let qi = 0; qi < queue.length; qi++) {
+          const v = queue[qi];
+          size++;
+          for (const w of state.gcAdj[v]) {
+            if (!removed[w] && !seen[w]) {
+              seen[w] = 1;
+              queue.push(w);
+            }
+          }
+        }
+        if (size > best) best = size;
+      }
+      series.push(alive ? best / alive : 0);
+    }
+    return series;
+  }
+
+  // A small seeded generator so the "at random" curve is the same for every
+  // reader — a random baseline that changes on reload is not a baseline.
+  function seededShuffle(values, seed) {
+    const arr = values.slice();
+    let s = seed;
+    const rand = () => {
+      s = (s * 1664525 + 1013904223) % 4294967296;
+      return s / 4294967296;
+    };
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rand() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  function renderRemoval(state) {
+    const steps = 150; // far enough for the targeted orders to actually break the network
+    const byIdx = (key) =>
+      d3
+        .range(state.cast.length)
+        .sort((a, b) => state.cast[b][key] - state.cast[a][key])
+        .slice(0, steps);
+    const series = {
+      betweenness: giantFractionAfterRemoval(state, byIdx("betweenness"), steps),
+      degree: giantFractionAfterRemoval(state, byIdx("degree"), steps),
+      pagerank: giantFractionAfterRemoval(state, byIdx("pagerank"), steps),
+      random: giantFractionAfterRemoval(state, seededShuffle(d3.range(state.cast.length), 20260920).slice(0, steps), steps),
+    };
+    drawRemoval(document.getElementById("chart-removal"), series);
+
+    const worst = d3
+      .range(state.cast.length)
+      .map((i) => ({ i, frac: giantFractionAfterRemoval(state, [i], 1)[1] }))
+      .sort((a, b) => a.frac - b.frac)[0];
+    const half = series.betweenness.findIndex((v) => v < 0.5);
+    const gap = d3.max(series.degree.map((v, i) => Math.abs(v - series.betweenness[i])));
+    const at = Math.min(120, steps);
+    setHTML(
+      "finding-removal",
+      `<strong>No single character holds this network together, and no single measure aims the attack better.</strong>
+       The most damaging removal in the entire cast — ${shortName(state.cast[worst.i].id)}, who else — still leaves
+       ${(worst.frac * 100).toFixed(1)}% of the survivors in one piece. It takes a campaign: the giant component
+       holds above 80% for the first 60 removals, and only past ${half} does it fall below half, collapsing to
+       ${(series.betweenness[steps] * 100).toFixed(0)}% by ${steps} while random removals still leave
+       ${(series.random[steps] * 100).toFixed(0)}% intact. That is the familiar picture — heavy-tailed networks
+       shrug off accidents and come apart under a targeted attack. Two details are ours rather than the textbook's.
+       Betweenness and degree never separate by more than ${(gap * 100).toFixed(0)} percentage points, so the
+       measure built to find brokers is no better at choosing whom to remove than simply counting links — because
+       it is mostly link count. And PageRank is the worst plan of the three: after ${at} removals it still leaves
+       ${(series.pagerank[at] * 100).toFixed(0)}% standing against betweenness's
+       ${(series.betweenness[at] * 100).toFixed(0)}%, because it ranks prestige in the directed network, which is
+       not the same thing as holding an undirected one together.`
+    );
+  }
+
+  // ---------------------------------------------------------------
   // Known associates — cliques and mixing
   // ---------------------------------------------------------------
   const TEAM_INK = {
@@ -1408,38 +1682,46 @@
     return TEAM_INK[team] || INK_FAINT;
   }
 
-  function cliqueRow(state, clique) {
-    const teams = clique.map((i) => state.cast[i].team).filter(Boolean);
+  function cliqueRow(state, family) {
+    const teamOf = (i) => state.cast[i].team;
     const counts = new Map();
-    teams.forEach((t) => counts.set(t, (counts.get(t) || 0) + 1));
+    family.members.forEach((i) => {
+      const t = teamOf(i);
+      if (t) counts.set(t, (counts.get(t) || 0) + 1);
+    });
     const ranked = Array.from(counts).sort((a, b) => b[1] - a[1]);
+    const labelled = family.members.filter((i) => teamOf(i)).length;
     const read = ranked.length
-      ? `${ranked[0][0]} ${ranked[0][1]}/${clique.length}` + (ranked.length > 1 ? ` &middot; ${ranked.length} teams` : "")
+      ? `${ranked[0][0]} ${ranked[0][1]}/${labelled}` + (ranked.length > 1 ? ` &middot; ${ranked.length} teams` : "")
       : "no team on file";
-    const chips = clique
-      .slice()
-      .sort((a, b) => state.cast[b].degree - state.cast[a].degree)
-      .map((i) => {
-        const c = state.cast[i];
-        const ink = teamInk(c.team);
-        return `<span class="chip" style="border-color:${ink};color:${ink}" title="${c.team || "no team on file"}">${shortName(c.id)}</span>`;
-      })
-      .join("");
-    return `<div class="clique-row"><span class="clique-size">${clique.length}</span>
+
+    const chip = (i, rotating) => {
+      const c = state.cast[i];
+      const ink = teamInk(c.team);
+      const title = (c.team || "no team on file") + (rotating ? " — appears in a variant of this group" : "");
+      return `<span class="chip${rotating ? " swap" : ""}" style="border-color:${ink};color:${ink}" title="${title}">${shortName(c.id)}</span>`;
+    };
+    const byDegree = (a, b) => state.cast[b].degree - state.cast[a].degree;
+    const chips =
+      family.lineup.slice().sort(byDegree).map((i) => chip(i, false)).join("") +
+      family.swaps.slice().sort(byDegree).map((i) => chip(i, true)).join("");
+
+    return `<div class="clique-row"><span class="clique-size">${family.size}<small>${
+      family.variants > 1 ? `${family.variants} line-ups` : "one group"
+    }</small></span>
             <span class="clique-read">${read}</span><span class="clique-members">${chips}</span></div>`;
   }
 
   function renderCliques(state) {
     const view = state.cliqueView === "mixed" ? "mixed" : "biggest";
-    const scored = state.bigCliques.map((clique) => {
-      const teams = new Set(clique.map((i) => state.cast[i].team).filter(Boolean));
-      return { clique, teams: teams.size };
-    });
+    const teamsIn = (family) => new Set(family.members.map((i) => state.cast[i].team).filter(Boolean)).size;
     const chosen =
       view === "mixed"
-        ? scored.filter((d) => d.teams >= 3).sort((a, b) => b.teams - a.teams || b.clique.length - a.clique.length)
-        : scored.slice().sort((a, b) => b.clique.length - a.clique.length || a.teams - b.teams);
-    setHTML("clique-list", chosen.slice(0, 6).map((d) => cliqueRow(state, d.clique)).join(""));
+        ? state.cliqueFamilies
+            .filter((f) => teamsIn(f) >= 3)
+            .sort((a, b) => teamsIn(b) - teamsIn(a) || b.size - a.size)
+        : state.cliqueFamilies.slice().sort((a, b) => b.size - a.size || b.variants - a.variants);
+    setHTML("clique-list", chosen.slice(0, 6).map((f) => cliqueRow(state, f)).join(""));
   }
 
   function renderAssociates(state) {
@@ -1450,6 +1732,7 @@
       return teams.size === 1;
     }).length;
     const mixed = state.bigCliques.filter((c) => new Set(c.map((i) => cast[i].team).filter(Boolean)).size >= 3).length;
+    setText("stat-families", state.cliqueFamilies.length);
 
     setText("stat-omega", scan.omega);
     setText("stat-cliques", scan.countAtLeast);
@@ -1534,6 +1817,8 @@
 
   function renderBriefing(state) {
     const s = state.summary;
+    setText("eigen-corr", s.eigenVsDegree.toFixed(2));
+    setText("eigen-value", s.eigenvalue.toFixed(2));
     setText("stat-nodes", s.n);
     setText("stat-links", s.m.toLocaleString());
     setText("stat-gc", s.gcNodes);
@@ -1636,6 +1921,7 @@
     renderBriefing(state);
     renderTopTens(state);
     renderDirection(state);
+    renderRemoval(state);
     renderChainRecord(state);
     renderAssociates(state);
     setupSuspectPicker(state);
@@ -1649,10 +1935,12 @@
   // a small null so a broken finding or a missing element fails a check rather
   // than a reader's browser.
   window.WLF3_UI = {
+    renderBriefing,
     renderSuspect,
     renderFindings,
     renderTopTens,
     renderDirection,
+    renderRemoval,
     renderAssociates,
     renderCliques,
     renderCliqueNull,
@@ -1679,7 +1967,11 @@
     edgeList,
     summariseNull,
     meanSd,
+    giantFractionAfterRemoval,
+    eigenvectorCentrality,
+    spearman,
     cliqueScan,
+    cliqueFamilies,
     attributeAssortativity,
     labelShuffleNull,
     buildState,

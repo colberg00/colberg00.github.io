@@ -36,7 +36,9 @@
   <span id="rank-degree"></span><span id="rank-closeness"></span><span id="rank-harmonic"></span>
   <span id="rank-betweenness"></span><span id="rank-pagerank"></span>
   <div id="verdict"></div><div id="null-hist"></div>
-  <div id="chart-scatter"></div><div id="chart-z"></div>
+  <div id="chart-scatter"></div><div id="chart-z"></div><div id="chart-removal"></div>
+  <div id="finding-removal"></div><span id="eigen-corr"></span><span id="eigen-value"></span>
+  <span id="rank-eigenvector"></span>
   <span id="stat-omega"></span><span id="stat-cliques"></span><span id="clique-single"></span><span id="clique-mixed"></span>
   <div id="clique-list"></div><div id="hist-team"></div><div id="hist-decade"></div>
   <span id="homophily-team"></span><span id="homophily-decade"></span>
@@ -100,6 +102,20 @@
     path_bill_spidey_undirected: 1,
     path_spidey_bill_directed: 5,
     omega: 8, cliques_from_5: 153, cliques_single_team: 27, cliques_mixed: 28,
+    clique_families: 77, biggest_family_variants: 7,
+    remove_top_betweenness: 0.9818840579710145,
+    remove_60_betweenness: 0.8064516129032258,
+    eigenvalue: 21.191397406330935,
+    eigen_vs_degree: 0.8770,
+    eigenvector: {
+      "Spider-Man": 0.3500537762502795,
+      "Hercules_(Marvel_Comics)": 0.09040071867025835,
+      "Black_Cat_(Marvel_Comics)": 0.1389354016752861,
+      "Rockman_(character)": 0.004925596772891641,
+      "Betsy_Braddock": 0.1328366902690537,
+    },
+    eigen_top10: ["Spider-Man", "Wolverine_(character)", "Doctor_Strange", "Hulk", "Deadpool", "She-Hulk",
+      "Black_Cat_(Marvel_Comics)", "Storm_(Marvel_Comics)", "Phoenix_Force", "Scarlet_Witch"],
     team: { nodes: 158, links: 852, r: 0.18606314991164288 },
     decade: { nodes: 264, links: 1343, r: 0.07876282816376341 },
     chains: {
@@ -150,7 +166,8 @@
     record("degree assortativity", state.summary.assortativity, EXPECTED.assortativity, 1e-12);
 
     [["betweenness", "betweenness"], ["closeness", "closeness"], ["harmonic", "harmonic"],
-     ["pagerank", "pagerank"], ["betweenness_dir", "betweennessDir"]].forEach(([key, field]) => {
+     ["pagerank", "pagerank"], ["betweenness_dir", "betweennessDir"],
+     ["eigenvector", "eigenvector"]].forEach(([key, field]) => {
       Object.entries(EXPECTED[key]).forEach(([id, want]) => {
         record(`${key}: ${id}`, state.byId.get(id)[field], want, 1e-9);
       });
@@ -172,6 +189,18 @@
     const t2 = W.tracePath(state, "Spider-Man", "Beta_Ray_Bill", true);
     record("Spider-Man → Bill, arrows on (hops)", t2.path.length - 1, EXPECTED.path_spidey_bill_directed);
 
+    // eigenvector centrality and the removal experiment
+    const topEigen = state.cast.slice().sort((a, b) => b.eigenvector - a.eigenvector).slice(0, 10).map((c) => c.id);
+    record("eigenvector top 10", topEigen, EXPECTED.eigen_top10);
+    record("leading eigenvalue", state.summary.eigenvalue, EXPECTED.eigenvalue, 1e-6);
+    record("eigenvector ranks near degree", Math.abs(state.summary.eigenVsDegree - EXPECTED.eigen_vs_degree) < 0.02 ? 1 : 0, 1);
+
+    const order = d3.range(state.cast.length).sort((a, b) => state.cast[b].betweenness - state.cast[a].betweenness);
+    record("giant share after removing #1 broker", W.giantFractionAfterRemoval(state, order.slice(0, 1), 1)[1],
+      EXPECTED.remove_top_betweenness, 1e-12);
+    record("giant share after removing 60", W.giantFractionAfterRemoval(state, order.slice(0, 60), 60)[60],
+      EXPECTED.remove_60_betweenness, 1e-12);
+
     // the end of the line
     const ch = state.chains;
     record("arrows off: longest chain to the hub", ch.undirected.max, EXPECTED.chains.undirected.max);
@@ -192,6 +221,26 @@
     record("cliques spanning three teams or more", state.bigCliques.filter((c) => teamsOf(c).size >= 3).length, EXPECTED.cliques_mixed);
     record("every kept clique really is a clique", state.bigCliques.every((c) =>
       c.every((a) => c.every((b) => a === b || state.gcAdj[a].includes(b)))) ? 1 : 0, 1);
+
+    // families: the near-copies of one group collapsed into a single row
+    const fams = state.cliqueFamilies;
+    record("families behind the cliques", fams.length, EXPECTED.clique_families);
+    record("every line-up shown is itself a clique", fams.every((f) =>
+      f.lineup.every((a) => f.lineup.every((b) => a === b || state.gcAdj[a].includes(b)))) ? 1 : 0, 1);
+    record("line-ups and swap-ins never overlap", fams.every((f) =>
+      f.swaps.every((v) => !f.lineup.includes(v))) ? 1 : 0, 1);
+    record("variants add up to the clique count", fams.reduce((sum, f) => sum + f.variants, 0), EXPECTED.cliques_from_5);
+    const biggest = fams.slice().sort((a, b) => b.size - a.size || b.variants - a.variants)[0];
+    record("biggest family: size", biggest.size, 8);
+    record("biggest family: line-ups", biggest.variants, EXPECTED.biggest_family_variants);
+    record("biggest family is all X-Men", biggest.lineup.every((i) => state.cast[i].team === "X-Men") ? 1 : 0, 1);
+    record("grouping does not depend on the order found", (() => {
+      const shuffled = state.bigCliques.slice().reverse();
+      const again = W.cliqueFamilies(shuffled, 0.6);
+      return again.length === fams.length ? 1 : 0;
+    })(), 1);
+    record("mixed view has rows to show", fams.filter((f) =>
+      new Set(f.members.map((i) => state.cast[i].team).filter(Boolean)).size >= 3).length >= 6 ? 1 : 0, 1);
 
     // homophily
     ["team", "decade"].forEach((kind) => {
@@ -268,8 +317,10 @@
     let renderError = "";
     try {
       const U = window.WLF3_UI;
+      U.renderBriefing(state);
       U.renderTopTens(state);
       U.renderDirection(state);
+      U.renderRemoval(state);
       U.renderFindings(state, brokers);
       U.renderChainRecord(state);
       U.renderAssociates(state);
@@ -282,13 +333,15 @@
     }
     record("rendering layer runs without throwing", renderError || "ok", "ok");
     ["finding-alibi", "finding-brokers", "finding-closeness", "finding-mixing", "finding-direction",
-     "finding-cliques", "chain-record", "clique-list", "homophily-team", "homophily-decade"].forEach((id) => {
+     "finding-cliques", "finding-removal", "chain-record", "clique-list", "homophily-team",
+     "homophily-decade"].forEach((id) => {
       const el = document.getElementById(id);
       record(`${id} filled in`, el && el.innerHTML.trim().length > 80 ? 1 : 0, 1);
     });
     record("top tens table rendered", document.querySelectorAll("#toptens tbody tr").length, 10);
     record("direction table rendered", document.querySelectorAll("#direction-table tbody tr").length, 8);
-    record("charts drew SVGs", document.querySelectorAll("#chart-scatter svg, #chart-z svg, #null-hist svg, #hist-team svg, #hist-decade svg").length, 5);
+    record("charts drew SVGs", document.querySelectorAll("#chart-scatter svg, #chart-z svg, #null-hist svg, #hist-team svg, #hist-decade svg, #chart-removal svg").length, 6);
+    record("eigenvector figures filled in", document.getElementById("eigen-value").textContent.length > 0 ? 1 : 0, 1);
     record("clique rows rendered", document.querySelectorAll("#clique-list .clique-row").length, 6);
     record("verdict: Hercules", window.WLF3_UI.verdictFor(state, "Hercules_(Marvel_Comics)").code, "broker");
     record("verdict: Spider-Man", window.WLF3_UI.verdictFor(state, "Spider-Man").code, "alibi");

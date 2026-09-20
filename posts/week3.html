@@ -88,7 +88,7 @@
   .susp-name{ font-family:'Special Elite',monospace; font-size:1.35rem; color:#c8ffd6; display:block; }
   .susp-file{ font-size:.75rem; color:#5f9c72; display:block; margin:.25rem 0 .8rem; line-height:1.5; }
   .susp-k{ color:#9fe8ae; }
-  .rank-grid{ display:grid; grid-template-columns: repeat(5, 1fr); gap:.4rem; }
+  .rank-grid{ display:grid; grid-template-columns: repeat(auto-fit, minmax(3.2rem, 1fr)); gap:.4rem; }
   .rank-grid .rk{ background:#050a06; border:1px solid #1f3826; border-radius:3px; padding:.45rem .3rem; text-align:center; }
   .rank-grid .rk .rl{ font-size:.6rem; text-transform:uppercase; letter-spacing:.05em; color:#4f9d5f; display:block; }
   .rank-grid .rk .rv{ font-family:'Special Elite',monospace; font-size:1.05rem; color:#c8ffd6; }
@@ -172,11 +172,11 @@
 
   /* ================= cliques ================= */
   .clique-row{
-    display:grid; grid-template-columns: 2.2rem 9rem 1fr; gap:.7rem; align-items:start;
+    display:grid; grid-template-columns: 4.4rem 9rem 1fr; gap:.7rem; align-items:start;
     padding:.6rem 0; border-bottom:1px dashed var(--line);
   }
   .clique-row:last-child{ border-bottom:none; }
-  @media (max-width: 40rem){ .clique-row{ grid-template-columns: 2.2rem 1fr; } .clique-read{ grid-column: 2; } .clique-members{ grid-column: 1 / -1; } }
+  @media (max-width: 40rem){ .clique-row{ grid-template-columns: 4.4rem 1fr; } .clique-read{ grid-column: 2; } .clique-members{ grid-column: 1 / -1; } }
   .clique-size{
     font-family:'Special Elite',monospace; font-size:1.3rem; color: var(--red); text-align:center; line-height:1.1;
   }
@@ -185,8 +185,23 @@
   .chip{
     font-size:.78rem; border:1px solid var(--line); border-radius:2px; padding:.12rem .4rem; background: var(--paper);
   }
+  .chip.swap{ border-style: dashed; opacity:.75; }
+  .clique-size small{
+    display:block; font-family:'Courier Prime',monospace; font-size:.6rem; letter-spacing:.04em;
+    color: var(--ink-faint); text-transform:uppercase; margin-top:.1rem;
+  }
 
   .homophily-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin:1rem 0; }
+
+  /* ================= vocabulary ================= */
+  .vocab{ display:grid; grid-template-columns: 1fr 1fr; gap:1.6rem 2.2rem; margin:1.2rem 0; align-items:start; }
+  @media (max-width: 46rem){ .vocab{ grid-template-columns: 1fr; } }
+  .vocab h3{ margin:0 0 .4rem; font-size:1rem; border-bottom:1px solid var(--line); padding-bottom:.3rem; }
+  .vocab dl{ margin:0; }
+  .vocab dt{
+    font-family:'Special Elite',monospace; font-size:.88rem; color: var(--red); margin-top:.7rem;
+  }
+  .vocab dd{ margin:.15rem 0 0; font-size:.86rem; color: var(--ink-soft); }
   @media (max-width: 46rem){ .homophily-grid{ grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -236,14 +251,18 @@
 
   <h2>Method, in one paragraph</h2>
   <p class="wlf-muted">
-    We compute degree, closeness, harmonic, betweenness and PageRank on the 277-character giant component, then test
+    Every distance on this page comes from a <strong>breadth-first search</strong>: stand on a character, mark
+    everyone they link to as one step away, everyone new those link to as two, and keep going. Run it from all 277
+    characters in the giant component and you have what <strong>closeness</strong>, <strong>harmonic</strong> and
+    <strong>betweenness centrality</strong> are built from, while <strong>eigenvector centrality</strong> and
+    <strong>PageRank</strong> come from passing scores along the links instead. We then test
     every character against the null model from Case No. 02: a <strong>degree-preserving shuffle</strong>, which
     repeatedly picks two wiki-links and crosses their endpoints so that every character keeps their exact number of
     links while who-links-to-whom is scrambled. Two hundred shuffles give every character a null distribution, and
     the gap between their real score and that distribution &mdash; the z-score &mdash; is the only number in this
     file we're willing to call a finding. Everything runs in your browser from the same two TSVs as the other
     cases; the compute core is checked against our week 3 notebook (networkx) by
-    <a href="../tools/verify-week3.html">tools/verify-week3.html</a>, 89 checks, all passing.
+    <a href="../tools/verify-week3.html">tools/verify-week3.html</a>, 110 checks, all passing.
   </p>
 
   <div class="briefing">
@@ -297,6 +316,7 @@
             <div class="rk"><span class="rl">Degree</span><span class="rv" id="rank-degree">&mdash;</span></div>
             <div class="rk"><span class="rl">Close</span><span class="rv" id="rank-closeness">&mdash;</span></div>
             <div class="rk"><span class="rl">Between</span><span class="rv" id="rank-betweenness">&mdash;</span></div>
+            <div class="rk"><span class="rl">Eigen</span><span class="rv" id="rank-eigenvector">&mdash;</span></div>
             <div class="rk"><span class="rl">PageRank</span><span class="rv" id="rank-pagerank">&mdash;</span></div>
           </div>
           <div class="verdict pending" id="verdict"></div>
@@ -353,7 +373,10 @@
   <h3>Four measures, four top tens</h3>
   <p class="wlf-muted">
     Degree asks who is popular, closeness who can reach everyone fastest, betweenness who sits between everyone
-    else, and PageRank who is pointed at by pages that matter. <span id="toptens-overlap">&hellip;</span> characters
+    else, and PageRank who is pointed at by pages that matter. A fifth, <strong>eigenvector centrality</strong> &mdash;
+    you are important if the characters linking to you are important &mdash; is on the suspect card above; on an
+    undirected network it is close to a restatement of degree, and it ranks characters the same way to within a rank
+    correlation of <span id="eigen-corr">&hellip;</span>. <span id="toptens-overlap">&hellip;</span> characters
     make all four lists; the names in red are missing from at least one of them, which is where the measures
     disagree.
   </p>
@@ -377,12 +400,32 @@
 
   <hr class="wlf-hr">
 
-  <h2>Case Analysis II &mdash; one-way streets</h2>
+  <h2>Case Analysis II &mdash; pull the thread</h2>
+  <p>
+    If brokers hold the network together, removing them should break it. We remove characters one at a time in four
+    different orders &mdash; most betweenness first, most links first, highest PageRank first, and at random &mdash;
+    and watch the largest surviving group shrink, all the way to 150 of the 277 characters removed. The orders are
+    fixed in advance from the intact network rather than recomputed after each removal, which is the cheaper and
+    more honest version of the experiment: it's what an attacker with one snapshot could actually do.
+  </p>
+  <div class="chart-box">
+    <div id="chart-removal"></div>
+    <div class="chart-caption">Giant component as a share of the surviving characters</div>
+  </div>
+  <div class="finding" id="finding-removal"></div>
+
+  <hr class="wlf-hr">
+
+  <h2>Case Analysis III &mdash; one-way streets</h2>
   <p>
     Everything above treats a wiki-link as a handshake, when it is really a finger pointed one way. Spider-Man's
-    article is linked from 106 pages and links out to nine, eight of which are other spider-characters. Put the
-    arrows back and the network stops being a small world and starts being a set of one-way streets: roughly 69% of
-    ordered pairs can still reach each other, the rest cannot.
+    article is linked from 106 pages and links out to nine, eight of which are other spider-characters. Ignore the
+    arrows and this is a textbook <strong>small world</strong>: an average distance of 2.67, a
+    <strong>diameter</strong> of 6, a <strong>radius</strong> of 3, and exactly one character whose
+    <strong>eccentricity</strong> matches that radius &mdash; Spider-Man, which is what it means to call him the
+    network's <strong>centre</strong>. Put the arrows back and it becomes a set of one-way streets: the largest
+    <strong>strongly connected component</strong>, the characters who can all still reach each other by following
+    links, holds 229 of the 303, and only about 69% of ordered pairs are reachable at all.
   </p>
 
   <h3>Six degrees of Spider-Man</h3>
@@ -442,24 +485,31 @@
 
   <hr class="wlf-hr">
 
-  <h2>Case Analysis III &mdash; known associates</h2>
+  <h2>Case Analysis IV &mdash; known associates</h2>
   <p>
     Centrality is a question about individuals. The last question in this file is about groups: not who is important,
     but who turns up together. A <strong>clique</strong> is the strictest version of that &mdash; a set of characters
-    in which every single pair links to each other, with no exceptions allowed.
+    in which every single pair links to each other, with no exceptions allowed. We enumerate the
+    <strong>maximal</strong> ones &mdash; the cliques no further character can be added to &mdash; and the size of
+    the largest is the network's <strong>clique number</strong>.
   </p>
 
   <div class="briefing">
     <div class="stat"><span class="n" id="stat-omega">&hellip;</span><span class="l">Largest clique</span></div>
     <div class="stat"><span class="n" id="stat-cliques">&hellip;</span><span class="l">Cliques of five or more</span></div>
     <div class="stat"><span class="n" id="clique-single">&hellip;</span><span class="l">Of those, a single team</span></div>
-    <div class="stat"><span class="n" id="clique-mixed">&hellip;</span><span class="l">Spanning three teams or more</span></div>
+    <div class="stat"><span class="n" id="stat-families">&hellip;</span><span class="l">Distinct groups behind them</span></div>
+    <div class="stat"><span class="n" id="clique-mixed">&hellip;</span><span class="l">Cliques spanning three teams</span></div>
   </div>
 
   <p class="wlf-muted">
-    Team membership comes from the <code>alliances</code> field of each character's Wikipedia infobox, matched
-    against eighteen well-known teams; 158 of the 277 characters in the giant component get a label that way, and the
-    rest are shown in grey. Chip colour is the team.
+    Cliques overlap: swap one member of a group of eight and the result is another perfectly good clique with the
+    same cast. Listing them raw would show the same group over and over, so near-identical cliques are collected into
+    one row &mdash; solid chips are the members every version of that group contains, dashed chips are the ones who
+    rotate through, and the number on the left counts the line-ups behind the row. Team membership comes from the
+    <code>alliances</code> field of each character's Wikipedia infobox, matched against eighteen well-known teams;
+    158 of the 277 characters in the giant component get a label that way and the rest stay grey. Chip colour is the
+    team.
   </p>
   <div class="toggle-row">
     <button class="toggle-btn active" data-cliqueview="biggest">THE BIGGEST</button>
@@ -470,9 +520,12 @@
   </div>
 
   <p>
-    So, are they teams? The biggest ones are exactly that, and they are all the same team. Every clique of eight is
-    an X-Men line-up built from the same six regulars &mdash; Betsy Braddock, Cyclops, Emma Frost, Jean Grey, Rachel
-    Summers and Wolverine &mdash; with two more X-Men rotating through. Wikipedia wrote the roster without meaning to.
+    So, are they teams? The top row answers that on its own. Six different cliques of eight exist in this network,
+    and they are one group wearing different hats: every one of them contains Betsy Braddock, Cyclops, Emma Frost,
+    Jean Grey, Rachel Summers and Wolverine, with Cable, Storm, Northstar, Jubilee and Phoenix Force filling the last
+    two seats between them. The row shows one of those line-ups solid and the characters who complete the other
+    versions dashed beside it. Nobody set out to record an X-Men roster, and yet there it is, assembled out of
+    nothing but who mentions whom.
   </p>
   <p>
     Switch to the mixed view and a different kind of group appears, one with no roster at all. Blade, Doctor Strange,
@@ -485,8 +538,9 @@
 
   <h3>Does the network prefer its own kind?</h3>
   <p>
-    A clique is the extreme case of a milder question: do characters link to characters like themselves at all? Two
-    labels can be read off the articles &mdash; the team a character belongs to, and the decade they first appeared
+    A clique is the extreme case of a milder question: do characters link to characters like themselves at all? That
+    tendency has a name, <strong>homophily</strong>, and <strong>attribute assortativity</strong> is how it is
+    measured. Two labels can be read off the articles &mdash; the team a character belongs to, and the decade they first appeared
     in &mdash; and for each one, <em>assortativity</em> measures how much of the linking stays inside a label. Zero
     means the labels tell you nothing about who links to whom.
   </p>
@@ -517,6 +571,103 @@
 
   <hr class="wlf-hr">
 
+  <h2>Case notes &mdash; the vocabulary</h2>
+  <p>
+    Everything above is built from a small set of standard measures. Gathered in one place, with what each one is
+    for and where this file leans on it.
+  </p>
+
+  <div class="vocab">
+    <section>
+    <h3>Paths and distance</h3>
+    <dl>
+      <dt>Walk, path, shortest path</dt>
+      <dd>A walk is any sequence of linked characters, a path never repeats one, and the shortest path between two
+        characters has the fewest links. Its length is their <em>distance</em>.</dd>
+      <dt>Breadth-first search</dt>
+      <dd>The machine that finds those distances: everyone one link away, then everyone new two links away, and so
+        on. One run gives the distances from a character to the whole network; running it from all of them powers
+        the tracer and three of the centralities.</dd>
+      <dt>Eccentricity, diameter, radius, centre</dt>
+      <dd>A character's eccentricity is the distance to whoever is furthest from them. The largest is the network's
+        diameter (6), the smallest its radius (3), and the characters at that radius are its centre &mdash; here,
+        Spider-Man alone.</dd>
+      <dt>Weakly and strongly connected</dt>
+      <dd>Weakly connected means joined once you ignore the arrows; strongly connected means everyone can reach
+        everyone by following them. The largest strongly connected component holds 229 of the 303 characters.</dd>
+      <dt>Small world</dt>
+      <dd>Distances that stay tiny next to the size of the network. Ignoring arrows, no two characters here are more
+        than six links apart.</dd>
+    </dl>
+    </section>
+
+    <section>
+    <h3>Five answers to &ldquo;who matters&rdquo;</h3>
+    <dl>
+      <dt>Degree centrality</dt>
+      <dd>Count the links. Popularity, and the measure the rest of this file keeps having to rule out.</dd>
+      <dt>Closeness centrality</dt>
+      <dd>The inverse of the mean distance to everyone else: how quickly a character can reach the whole network.</dd>
+      <dt>Harmonic centrality</dt>
+      <dd>The same idea summed as inverse distances, so unreachable characters contribute nothing instead of
+        breaking the sum. It is the version that survives a disconnected or directed network.</dd>
+      <dt>Betweenness centrality</dt>
+      <dd>The share of shortest paths between other pairs that run through a character. Brokerage rather than
+        popularity, and the measure the interrogation room puts on trial.</dd>
+      <dt>Eigenvector centrality</dt>
+      <dd>Importance defined circularly &mdash; you are important if important characters link to you &mdash; and
+        resolved by iterating until the scores stop moving, which lands on the leading eigenvector of the adjacency
+        matrix. Its eigenvalue here is <span id="eigen-value">&hellip;</span>.</dd>
+      <dt>PageRank and the random walk</dt>
+      <dd>The directed cousin: a walker clicks a random link, teleports occasionally, and a character's score is the
+        share of time the walk spends on them. On an undirected network that walk settles in proportion to degree,
+        which is precisely why PageRank earns its keep on the arrows and not without them.</dd>
+    </dl>
+    </section>
+
+    <section>
+    <h3>Compared to what</h3>
+    <dl>
+      <dt>Null model</dt>
+      <dd>A network that keeps the features you are not asking about and scrambles the one you are, so a measurement
+        has something to be surprising against.</dd>
+      <dt>Degree-preserving shuffle</dt>
+      <dd>Pick two links, cross their endpoints, repeat: every character keeps their exact number of links while
+        who-links-to-whom is destroyed. The interrogation room runs 200 of them.</dd>
+      <dt>z-score and empirical p-value</dt>
+      <dd>How many standard deviations the real value sits from the shuffled ones, and how many shuffles reached it.
+        With 200 shuffles the smallest p-value available is one in 201, which is the floor on every claim here.</dd>
+      <dt>Label shuffle</dt>
+      <dd>The null for a question about attributes: freeze the network, deal the labels out to different characters.
+        It keeps the structure and destroys only the tie between a label and a position.</dd>
+    </dl>
+    </section>
+
+    <section>
+    <h3>Mixing and groups</h3>
+    <dl>
+      <dt>Degree assortativity</dt>
+      <dd>The correlation between the degrees at the two ends of a link. Positive means hubs pair with hubs; Marvel
+        is mildly negative.</dd>
+      <dt>Structural disassortativity</dt>
+      <dd>Why that negative number is not a finding: a character with 106 links in a network of 277 has to spend
+        most of them on small characters, because there are not enough big ones to go round. Any heavy-tailed
+        network shows it, and the shuffles reproduce Marvel's value almost exactly.</dd>
+      <dt>Average neighbour degree</dt>
+      <dd>The same story as a curve rather than a number: for each degree, how well connected its characters'
+        neighbours are on average. Falling from 45 at one link to 19 for the biggest hubs.</dd>
+      <dt>Homophily and attribute assortativity</dt>
+      <dd>Linking to your own kind, measured for a label instead of a degree. Both the team and the decade labels
+        show it here.</dd>
+      <dt>Clique, maximal clique, clique number</dt>
+      <dd>A set where every pair links to every other; maximal if nobody can be added; and the largest one in the
+        network is its clique number, which is 8.</dd>
+    </dl>
+    </section>
+  </div>
+
+  <hr class="wlf-hr">
+
   <h2>Discussion</h2>
   <p>
     The Agency came into this case expecting to crown someone. What it found instead is that most of the
@@ -525,7 +676,8 @@
     fixed within a few percent before the first measurement; the network's preference for linking hubs to
     small characters is arithmetic, not taste. Strip out what the degrees already explain and a short list is left:
     a handful of genuine brokers in the middle of the table, a few characters sheltered behind a famous neighbour,
-    and one two-link gatekeeper.
+    and one two-link gatekeeper. The attack experiment says the same thing from the other
+    direction: the measure built to find brokers is no better at choosing whom to remove than counting links.
   </p>
   <p>
     The groups are the exception, and they are the reason this file ends where it does. Cliques, teams and eras all
