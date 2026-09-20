@@ -158,6 +158,36 @@
   .chain-row.broken .chain-body{ color: var(--red); font-style: italic; }
   .trace-note, .trace-miss{ font-size:.82rem; color: var(--ink-soft); margin:.6rem 0 0; }
   .trace-miss{ color: var(--red); }
+
+  /* ================= the end of the line ================= */
+  .record{ background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.15rem; margin: 1.2rem 0; }
+  .record p{ margin: .35rem 0 .8rem; font-size:.92rem; }
+  .record p:last-child{ margin-bottom: 0; }
+  .record-label{
+    display:inline-block; font-family:'Special Elite',monospace; font-size:.72rem; text-transform:uppercase;
+    letter-spacing:.08em; color: var(--paper); background: var(--board-dark); border-radius:2px;
+    padding:.1rem .45rem; margin-right:.5rem;
+  }
+  .record-chain{ margin:.2rem 0 1rem; }
+
+  /* ================= cliques ================= */
+  .clique-row{
+    display:grid; grid-template-columns: 2.2rem 9rem 1fr; gap:.7rem; align-items:start;
+    padding:.6rem 0; border-bottom:1px dashed var(--line);
+  }
+  .clique-row:last-child{ border-bottom:none; }
+  @media (max-width: 40rem){ .clique-row{ grid-template-columns: 2.2rem 1fr; } .clique-read{ grid-column: 2; } .clique-members{ grid-column: 1 / -1; } }
+  .clique-size{
+    font-family:'Special Elite',monospace; font-size:1.3rem; color: var(--red); text-align:center; line-height:1.1;
+  }
+  .clique-read{ font-size:.76rem; text-transform:uppercase; letter-spacing:.05em; color: var(--ink-faint); padding-top:.3rem; }
+  .clique-members{ display:flex; flex-wrap:wrap; gap:.3rem; }
+  .chip{
+    font-size:.78rem; border:1px solid var(--line); border-radius:2px; padding:.12rem .4rem; background: var(--paper);
+  }
+
+  .homophily-grid{ display:grid; grid-template-columns: 1fr 1fr; gap:1rem; margin:1rem 0; }
+  @media (max-width: 46rem){ .homophily-grid{ grid-template-columns: 1fr; } }
 </style>
 </head>
 <body class="wlf">
@@ -213,7 +243,7 @@
     the gap between their real score and that distribution &mdash; the z-score &mdash; is the only number in this
     file we're willing to call a finding. Everything runs in your browser from the same two TSVs as the other
     cases; the compute core is checked against our week 3 notebook (networkx) by
-    <a href="../tools/verify-week3.html">tools/verify-week3.html</a>, 62 checks, all passing.
+    <a href="../tools/verify-week3.html">tools/verify-week3.html</a>, 89 checks, all passing.
   </p>
 
   <div class="briefing">
@@ -231,8 +261,8 @@
     count exactly as it is, and asks what their betweenness would be if their position were pure chance. The
     histogram is that null; the bright line is the real network. Three verdicts are possible: <strong>broker</strong>
     (the real value sits above the null), <strong>alibi</strong> (the null explains it), and
-    <strong>sheltered</strong> (the network routes around them). Start with Spider-Man, then try the ones the
-    evidence board flags later on this page.
+    <strong>sheltered</strong> (the network routes around them). Start with Spider-Man; the evidence board below
+    names the characters worth pulling in next.
   </p>
 
   <div class="terminal">
@@ -347,11 +377,18 @@
 
   <hr class="wlf-hr">
 
-  <h2>Case Analysis II &mdash; the arrows</h2>
+  <h2>Case Analysis II &mdash; one-way streets</h2>
   <p>
-    Everything above ignores the direction of the links, which is a convenient lie: a wiki-link points one way. Put
-    the arrows back and only about 69% of ordered character pairs can reach each other at all. Trace a chain below,
-    with arrows off and then on.
+    Everything above treats a wiki-link as a handshake, when it is really a finger pointed one way. Spider-Man's
+    article is linked from 106 pages and links out to nine, eight of which are other spider-characters. Put the
+    arrows back and the network stops being a small world and starts being a set of one-way streets: roughly 69% of
+    ordered pairs can still reach each other, the rest cannot.
+  </p>
+
+  <h3>Six degrees of Spider-Man</h3>
+  <p class="wlf-muted">
+    Name a character and the tracer walks the links to Spider-Man. Turn the arrows on and it walks them in both
+    directions, which are rarely the same length.
   </p>
 
   <div class="tracer">
@@ -367,62 +404,142 @@
     <div id="trace-result"></div>
   </div>
 
-  <p class="wlf-muted">
-    The default, Beta Ray Bill, is our favourite one-way street: his article mentions a brief encounter with
-    Spider-Man, so it's one hop over. Coming back takes five, because Spider-Man's page links to only nine
-    characters and none of them lead anywhere near Bill.
+  <h3>The end of the line</h3>
+  <p>
+    Who is furthest from the middle of the universe? The answer changes completely depending on whether the arrows
+    count.
+  </p>
+  <div class="record" id="chain-record"></div>
+  <p>
+    Read that chain from left to right and every step is forced. Spider-Man's own page offers only one way out of his
+    corner &mdash; Black Cat &mdash; because the other eight links lead to spider-characters and the Hulk. From there
+    the trail runs through people nobody else writes about: Solo is the only page that links to G. W. Bridge, Bridge
+    the only one that links to Garrison Kane, and Kane the only one that links to Box. Six clicks, and each of the
+    last three has exactly one door.
+  </p>
+  <p>
+    Box also explains the shape of the far end. He is Alpha Flight, a Canadian team whose members mostly write about
+    each other, hanging off the main network by a thread of mercenaries. Distance in this network is not about fame,
+    it is about how many editors had a reason to mention you: the characters at the end of the line are the ones with
+    a single page pointing at them.
   </p>
 
   <h3>Who gains and who loses when the arrows go back on</h3>
+  <p class="wlf-muted">
+    The same ranking as Case Analysis I, recomputed with direction. A character can only pass traffic along if their
+    own page links out, so the pages that mention everyone climb and the pages everyone mentions fall.
+  </p>
   <div class="chart-box" style="overflow-x:auto">
     <table class="data-table" id="direction-table"></table>
   </div>
   <div class="finding" id="finding-direction"></div>
+  <p>
+    There is a type at the top of that table. Betsy Braddock links out to 28 characters and is linked from 7; Doctor
+    Nemesis, Rom the Space Knight and Deathlok are the same shape. These are long, crossover-heavy articles about
+    characters who turn up in everyone else's stories without being the reason anyone opens a comic &mdash; useful
+    as routes, unremarkable as destinations.
+  </p>
 
   <hr class="wlf-hr">
 
-  <h2>Case Analysis III &mdash; pull the thread</h2>
+  <h2>Case Analysis III &mdash; known associates</h2>
   <p>
-    If brokers hold the network together, removing them should break it. We remove characters one at a time in four
-    different orders &mdash; most betweenness first, most links first, highest PageRank first, and at random &mdash;
-    and watch the largest surviving group shrink, all the way to 150 of the 277 characters removed. The orders are
-    fixed in advance from the intact network rather than recomputed after each removal, which is the cheaper and
-    more honest version of the experiment: it's what an attacker with one snapshot could actually do.
+    Centrality is a question about individuals. The last question in this file is about groups: not who is important,
+    but who turns up together. A <strong>clique</strong> is the strictest version of that &mdash; a set of characters
+    in which every single pair links to each other, with no exceptions allowed.
   </p>
-  <div class="chart-box">
-    <div id="chart-removal"></div>
-    <div class="chart-caption">Giant component as a share of the surviving characters</div>
+
+  <div class="briefing">
+    <div class="stat"><span class="n" id="stat-omega">&hellip;</span><span class="l">Largest clique</span></div>
+    <div class="stat"><span class="n" id="stat-cliques">&hellip;</span><span class="l">Cliques of five or more</span></div>
+    <div class="stat"><span class="n" id="clique-single">&hellip;</span><span class="l">Of those, a single team</span></div>
+    <div class="stat"><span class="n" id="clique-mixed">&hellip;</span><span class="l">Spanning three teams or more</span></div>
   </div>
-  <div class="finding" id="finding-removal"></div>
+
+  <p class="wlf-muted">
+    Team membership comes from the <code>alliances</code> field of each character's Wikipedia infobox, matched
+    against eighteen well-known teams; 158 of the 277 characters in the giant component get a label that way, and the
+    rest are shown in grey. Chip colour is the team.
+  </p>
+  <div class="toggle-row">
+    <button class="toggle-btn active" data-cliqueview="biggest">THE BIGGEST</button>
+    <button class="toggle-btn" data-cliqueview="mixed">THE MOST MIXED</button>
+  </div>
+  <div class="chart-box">
+    <div id="clique-list"></div>
+  </div>
+
+  <p>
+    So, are they teams? The biggest ones are exactly that, and they are all the same team. Every clique of eight is
+    an X-Men line-up built from the same six regulars &mdash; Betsy Braddock, Cyclops, Emma Frost, Jean Grey, Rachel
+    Summers and Wolverine &mdash; with two more X-Men rotating through. Wikipedia wrote the roster without meaning to.
+  </p>
+  <p>
+    Switch to the mixed view and a different kind of group appears, one with no roster at all. Blade, Doctor Strange,
+    Morbius, Werewolf by Night, Ghost Rider, Man-Thing and Moon Knight are filed under four different teams, and they
+    are mutually linked because they share a genre rather than a base: they are Marvel's horror corner, and the
+    crossovers that pull them together are the kind the articles love to list. The largest groups in this network are
+    rosters. The next ones down are eras, genres, and the particular corner one character lives in.
+  </p>
+  <div class="finding" id="finding-cliques">Run the alibi check in the interrogation room and this finding fills in.</div>
+
+  <h3>Does the network prefer its own kind?</h3>
+  <p>
+    A clique is the extreme case of a milder question: do characters link to characters like themselves at all? Two
+    labels can be read off the articles &mdash; the team a character belongs to, and the decade they first appeared
+    in &mdash; and for each one, <em>assortativity</em> measures how much of the linking stays inside a label. Zero
+    means the labels tell you nothing about who links to whom.
+  </p>
+  <p class="wlf-muted">
+    A number on its own says nothing here either, and the test is different from the one in the interrogation room.
+    There we shuffled links; that would be the wrong instrument for a question about labels, since it destroys the
+    structure under examination. Instead the network is frozen and the labels are dealt out to different characters,
+    a thousand times. That keeps every link, every degree and the exact number of X-Men, and breaks only the tie
+    between who a character is and where they sit.
+  </p>
+  <div class="homophily-grid">
+    <div class="chart-box">
+      <div id="hist-team"></div>
+      <div class="chart-caption">By team</div>
+    </div>
+    <div class="chart-box">
+      <div id="hist-decade"></div>
+      <div class="chart-caption">By first-appearance decade</div>
+    </div>
+  </div>
+  <div class="finding"><strong>Team:</strong> <span id="homophily-team">&hellip;</span></div>
+  <div class="finding"><strong>Decade:</strong> <span id="homophily-decade">&hellip;</span></div>
+  <p>
+    Both effects are real and neither is close to chance, but the team effect is more than twice the size of the
+    decade one. Sharing a uniform matters more than sharing a debut year &mdash; which sounds obvious until you
+    remember that nothing in this data knows what a team is. It is only the pattern of who mentioned whom.
+  </p>
 
   <hr class="wlf-hr">
 
   <h2>Discussion</h2>
   <p>
-    Three weeks in, the Agency has a house rule. Case No. 01 found the hubs, Case No. 02 found out what it takes to
-    build them, and this one is about how easily a hub's shadow gets mistaken for a finding. Every headline number
-    here &mdash; Spider-Man's 23% of all shortest paths, the network's disassortativity, the entire closeness
-    ranking &mdash; is what the degree sequence alone produces. The shuffle is what separates a measurement from a
-    result, and it left us with a short list: a handful of genuine brokers in the middle of the ranking, a couple of
-    characters whose links are worth less than they look, and one two-link gatekeeper.
+    The Agency came into this case expecting to crown someone. What it found instead is that most of the
+    crowning had already been done by the link count. Spider-Man sits on nearly a quarter of all shortest paths
+    because he has 106 links, and any character with 106 links would do the same; the entire closeness ranking is
+    fixed within a few percent before the first measurement; the network's preference for linking hubs to
+    small characters is arithmetic, not taste. Strip out what the degrees already explain and a short list is left:
+    a handful of genuine brokers in the middle of the table, a few characters sheltered behind a famous neighbour,
+    and one two-link gatekeeper.
   </p>
   <p>
-    One finding this week that <em>isn't</em> about degree: characters link to characters from their own era.
-    Taking each character's first-appearance decade from the debut field of their Wikipedia infobox (found for 289
-    of the 303), the attribute assortativity is 0.079 against &minus;0.008 &plusmn; 0.011 for a thousand shuffles of
-    the labels across the same network &mdash; z = 7.9, and not one shuffle got there. It's a weak effect with a
-    strong signature, and it needs a different null from everything else on this page: here we shuffle the labels and
-    keep the links, because the question is about the labels. The catch is that the biggest hubs are mostly 1960s
-    characters, so some of that effect is popularity wearing a costume; a stricter test would shuffle decades only
-    among characters with similar degree.
+    The groups are the exception, and they are the reason this file ends where it does. Cliques, teams and eras all
+    survive the tests that flatten everything else. Whatever else the Marvel network is, it is genuinely clustered:
+    people who appear together get written about together.
   </p>
   <p>
-    What we'd flag for the next case. Our brokers are brokers <em>in Wikipedia's link structure</em>, which is a
-    record of what editors wrote, not of what happened in the comics &mdash; Hercules bridges the Avengers, the
-    cosmic characters and Asgard because someone wrote those paragraphs. The z-scores also assume the shuffled
-    values are roughly normal, which is fine for betweenness in the middle of the ranking and shakier out in the
-    tail where Rockman sits, so his z = 13 should be read as "off the scale", not as a precise number. And 200
-    shuffles is the floor for an empirical p-value: nothing here can be significant at better than 1 in 201.
+    Three caveats we would want a reader to hold. First, every finding here describes <em>Wikipedia</em>, not the
+    comics &mdash; Hercules bridges Asgard and the Avengers because an editor wrote those paragraphs, and Box sits at
+    the end of the line because few editors had a reason to mention him. Second, the team labels cover 158 of 277
+    characters, so the team result speaks for the labelled part of the network and the grey chips are missing data,
+    not loners. Third, two hundred shuffles put a floor under what we can claim: nothing on this page is significant
+    beyond roughly one in two hundred, and a z-score that large should be read as "far outside", not as a precise
+    measurement.
   </p>
 
 </main>

@@ -19,9 +19,14 @@
 
   const NODES_URL = "../week1_nodes.tsv";
   const EDGES_URL = "../week1_edges.tsv";
+  const ATTRIBUTES_URL = "../week3_attributes.tsv";
 
   const SHUFFLES = 200; // degree-preserving shuffles per alibi check
   const SWAPS_PER_LINK = 10; // Maslov–Sneppen rule of thumb
+  const CLIQUE_FLOOR = 5; // the smallest clique worth naming
+  const CLIQUE_NULL_RUNS = 200; // shuffles also scanned for cliques (a scan costs a few ms)
+  const LABEL_SHUFFLES = 1000; // permutations behind each homophily figure
+  const HUB = "Spider-Man"; // the character every chain is traced to
 
   // ---------------------------------------------------------------
   // Parsing and graph building
@@ -250,6 +255,121 @@
     const num = sxy / count - (sx / count) * (sy / count);
     const den = Math.sqrt(sxx / count - (sx / count) ** 2) * Math.sqrt(syy / count - (sy / count) ** 2);
     return den === 0 ? NaN : num / den;
+  }
+
+  // ---------------------------------------------------------------
+  // Groups: cliques, and mixing by an attribute
+  // ---------------------------------------------------------------
+  // Bron–Kerbosch with a pivot. Grows a clique R out of the candidates P while
+  // X holds the vertices already tried, and only reports a clique when neither
+  // set has anything left to add — which is what makes it maximal. The pivot is
+  // the candidate with the most neighbours still in play; skipping its
+  // neighbours prunes the branches that would only rediscover the same cliques.
+  function cliqueScan(adj, keepFrom) {
+    const n = adj.length;
+    const nbr = adj.map((l) => new Set(l));
+    const kept = [];
+    let omega = 0;
+    let countAtLeast = 0;
+    const R = [];
+
+    function expand(P, X) {
+      if (!P.length && !X.length) {
+        if (R.length > omega) omega = R.length;
+        if (R.length >= keepFrom) {
+          countAtLeast++;
+          kept.push(R.slice());
+        }
+        return;
+      }
+      let pivot = -1;
+      let best = -1;
+      for (const u of P.length ? P : X) {
+        let shared = 0;
+        for (const v of P) if (nbr[u].has(v)) shared++;
+        if (shared > best) {
+          best = shared;
+          pivot = u;
+        }
+      }
+      let candidates = P;
+      if (pivot >= 0) candidates = P.filter((v) => !nbr[pivot].has(v));
+      let rest = P;
+      let seen = X;
+      for (const v of candidates) {
+        const nv = nbr[v];
+        R.push(v);
+        expand(rest.filter((u) => nv.has(u)), seen.filter((u) => nv.has(u)));
+        R.pop();
+        rest = rest.filter((u) => u !== v);
+        seen = seen.concat([v]);
+      }
+    }
+
+    expand(d3.range(n), []);
+    return { omega, countAtLeast, kept };
+  }
+
+  // Newman's assortativity for a categorical attribute: the share of links that
+  // join two nodes of the same kind, minus the share you would get if the same
+  // kinds were spread at random, scaled so that 1 is perfect separation. Nodes
+  // without a label sit out; every link is counted from both ends.
+  function attributeAssortativity(adj, labelIdx, nLabels) {
+    const e = new Float64Array(nLabels * nLabels);
+    let total = 0;
+    for (let v = 0; v < adj.length; v++) {
+      const lv = labelIdx[v];
+      if (lv < 0) continue;
+      for (const w of adj[v]) {
+        const lw = labelIdx[w];
+        if (lw < 0) continue;
+        e[lv * nLabels + lw] += 1;
+        total += 1;
+      }
+    }
+    if (!total) return NaN;
+    let trace = 0;
+    const rowSum = new Float64Array(nLabels);
+    for (let i = 0; i < nLabels; i++) {
+      for (let j = 0; j < nLabels; j++) rowSum[i] += e[i * nLabels + j] / total;
+      trace += e[i * nLabels + i] / total;
+    }
+    let expected = 0;
+    for (let i = 0; i < nLabels; i++) expected += rowSum[i] * rowSum[i];
+    return expected === 1 ? NaN : (trace - expected) / (1 - expected);
+  }
+
+  // A small seeded generator, so the label shuffles below draw the same null
+  // for every reader instead of a slightly different one on each visit.
+  function seededRandom(seed) {
+    let state = seed >>> 0;
+    return function () {
+      state = (state * 1664525 + 1013904223) >>> 0;
+      return state / 4294967296;
+    };
+  }
+
+  // The null for an attribute: leave the network exactly as it is and deal the
+  // labels out to different nodes. Anything the network's own shape produces
+  // survives this; only the tie between a label and a position is destroyed.
+  function labelShuffleNull(adj, labelIdx, nLabels, reps, seed) {
+    const positions = [];
+    for (let v = 0; v < labelIdx.length; v++) if (labelIdx[v] >= 0) positions.push(v);
+    const labels = positions.map((v) => labelIdx[v]);
+    const scratch = Int32Array.from(labelIdx);
+    const random = seededRandom(seed || 1);
+    const out = new Float64Array(reps);
+    for (let r = 0; r < reps; r++) {
+      for (let i = labels.length - 1; i > 0; i--) {
+        const j = Math.floor(random() * (i + 1));
+        const tmp = labels[i];
+        labels[i] = labels[j];
+        labels[j] = tmp;
+      }
+      positions.forEach((v, i) => (scratch[v] = labels[i]));
+      out[r] = attributeAssortativity(adj, scratch, nLabels);
+    }
+    return out;
   }
 
   // ---------------------------------------------------------------
@@ -652,78 +772,88 @@
       .text(`z-score vs ${SHUFFLES} shuffles`);
   }
 
-  // Giant component as characters are removed in a chosen order.
-  function drawRemoval(el, series) {
-    const w = 640;
-    const h = 360;
-    const m = { top: 18, right: 130, bottom: 44, left: 52 };
+  // A null distribution drawn on the page's paper stock rather than inside the
+  // terminal: same idea as the one in the interrogation room, different ink.
+  function drawPaperNull(el, values, real, caption) {
+    const w = 460;
+    const h = 250;
+    const m = { top: 18, right: 18, bottom: 46, left: 40 };
     const svg = svgRoot(el, w, h);
-    const keys = Object.keys(series);
-    const maxRemoved = d3.max(keys, (k) => series[k].length - 1);
-    const x = d3.scaleLinear().domain([0, maxRemoved]).range([m.left, w - m.right]);
-    const y = d3.scaleLinear().domain([0, 1]).range([h - m.bottom, m.top]);
+    const lo = Math.min(d3.min(values), real);
+    const hi = Math.max(d3.max(values), real);
+    const pad = (hi - lo) * 0.14 || 0.05;
+    const x = d3.scaleLinear().domain([lo - pad, hi + pad]).range([m.left, w - m.right]);
+    const bins = d3.bin().domain(x.domain()).thresholds(30)(values);
+    const y = d3.scaleLinear().domain([0, d3.max(bins, (b) => b.length) || 1]).range([h - m.bottom, m.top]);
 
-    svg.append("g").attr("transform", `translate(0,${h - m.bottom})`).call(d3.axisBottom(x).ticks(7)).call(axisStyle);
-    svg.append("g").attr("transform", `translate(${m.left},0)`).call(d3.axisLeft(y).ticks(6, "%")).call(axisStyle);
+    svg.append("g").attr("transform", `translate(0,${h - m.bottom})`).call(d3.axisBottom(x).ticks(6)).call(axisStyle);
+    svg
+      .append("g")
+      .selectAll("rect")
+      .data(bins)
+      .join("rect")
+      .attr("x", (b) => x(b.x0) + 1)
+      .attr("y", (b) => y(b.length))
+      .attr("width", (b) => Math.max(1, x(b.x1) - x(b.x0) - 1.5))
+      .attr("height", (b) => h - m.bottom - y(b.length))
+      .attr("fill", BLUE)
+      .attr("fill-opacity", 0.65);
 
-    const colors = {
-      betweenness: RED,
-      degree: BLUE,
-      pagerank: "#6b4f14",
-      random: INK_FAINT,
-    };
-    const labels = {
-      betweenness: "by betweenness",
-      degree: "by degree",
-      pagerank: "by PageRank",
-      random: "at random",
-    };
-
-    keys.forEach((k) => {
-      svg
-        .append("path")
-        .attr("fill", "none")
-        .attr("stroke", colors[k] || INK)
-        .attr("stroke-width", 1.8)
-        .attr("d", d3.line().x((d, i) => x(i)).y((d) => y(d))(series[k]));
-    });
-
-    const legend = svg.append("g").attr("transform", `translate(${w - m.right + 12},${m.top + 6})`);
-    keys.forEach((k, i) => {
-      legend.append("line").attr("x1", 0).attr("x2", 16).attr("y1", i * 18).attr("y2", i * 18).attr("stroke", colors[k] || INK).attr("stroke-width", 2);
-      legend
-        .append("text")
-        .attr("x", 21)
-        .attr("y", i * 18 + 3.5)
-        .attr("font-family", "Courier Prime, monospace")
-        .attr("font-size", 10)
-        .attr("fill", INK_SOFT)
-        .text(labels[k] || k);
-    });
-
+    const rx = Math.min(Math.max(x(real), m.left), w - m.right);
+    svg.append("line").attr("x1", rx).attr("x2", rx).attr("y1", m.top - 4).attr("y2", h - m.bottom).attr("stroke", RED).attr("stroke-width", 2);
     svg
       .append("text")
-      .attr("x", (w - m.right + m.left) / 2)
-      .attr("y", h - 8)
-      .attr("text-anchor", "middle")
+      .attr("x", rx)
+      .attr("y", m.top - 7)
+      .attr("text-anchor", real > d3.mean(values) ? "end" : "start")
       .attr("font-family", "Courier Prime, monospace")
-      .attr("font-size", 11)
-      .attr("fill", INK_SOFT)
-      .text("characters removed");
+      .attr("font-size", 10)
+      .attr("fill", RED)
+      .text("real network");
     svg
       .append("text")
-      .attr("transform", `translate(14,${(h - m.bottom + m.top) / 2}) rotate(-90)`)
+      .attr("x", (w + m.left) / 2)
+      .attr("y", h - 10)
       .attr("text-anchor", "middle")
       .attr("font-family", "Courier Prime, monospace")
-      .attr("font-size", 11)
+      .attr("font-size", 10)
       .attr("fill", INK_SOFT)
-      .text("giant component, share of survivors");
+      .text(caption);
   }
 
   // ---------------------------------------------------------------
   // Load-time computation
   // ---------------------------------------------------------------
-  function buildState(nodeRows, edgeRows) {
+  // Turns one attribute into integer labels, with -1 for the characters whose
+  // article doesn't say.
+  function labelIndex(cast, key) {
+    const seen = new Map();
+    const idx = new Int32Array(cast.length).fill(-1);
+    cast.forEach((c, i) => {
+      const value = c[key];
+      if (!value) return;
+      if (!seen.has(value)) seen.set(value, seen.size);
+      idx[i] = seen.get(value);
+    });
+    return { idx, nLabels: seen.size };
+  }
+
+  function homophily(adj, cast, key, reps, seed) {
+    const { idx, nLabels } = labelIndex(cast, key);
+    const real = attributeAssortativity(adj, idx, nLabels);
+    const nullValues = labelShuffleNull(adj, idx, nLabels, reps, seed);
+    const { mean, sd } = meanSd(Array.from(nullValues));
+    let nodes = 0;
+    let ends = 0;
+    for (let v = 0; v < adj.length; v++) {
+      if (idx[v] < 0) continue;
+      nodes++;
+      for (const w of adj[v]) if (idx[w] >= 0) ends++;
+    }
+    return { real, null: nullValues, mean, sd, z: (real - mean) / sd, nodes, links: ends / 2, reps, labels: nLabels };
+  }
+
+  function buildState(nodeRows, edgeRows, attributeRows) {
     const ids = nodeRows.map((r) => r.node_id);
     const index = indexNodes(ids);
     const nameById = new Map(nodeRows.map((r) => [r.node_id, r.name || shortName(r.node_id)]));
@@ -752,10 +882,13 @@
     const dirCent = centralities(gcDir.out, { directed: true });
     const pr = pagerank(dir.out, dir.inn, 0.85);
 
+    const attributeById = new Map((attributeRows || []).map((r) => [r.node_id, r]));
     const cast = giantIds.map((id, i) => ({
       id,
       name: nameById.get(id) || shortName(id),
       description: descById.get(id) || "",
+      team: (attributeById.get(id) || {}).team || "",
+      decade: (attributeById.get(id) || {}).decade || "",
       degree: gcAdj[i].length,
       inDegree: gcDir.inn[i].length,
       outDegree: gcDir.out[i].length,
@@ -827,6 +960,38 @@
     );
     state.summary.topFourOverlap = [...tops[0]].filter((id) => tops.every((t) => t.has(id))).length;
     state.topTens = { degree: tops[0], closeness: tops[1], betweenness: tops[2], pagerank: tops[3] };
+
+    // How far the network stretches away from its hub, three ways: ignoring the
+    // arrows, following them out of Spider-Man, and following them back in.
+    function reach(adj, fromId) {
+      const dist = bfs(adj, index.get(fromId));
+      let max = 0;
+      let unreachable = 0;
+      for (let v = 0; v < dist.length; v++) {
+        if (dist[v] < 0) unreachable++;
+        else if (dist[v] > max) max = dist[v];
+      }
+      const at = [];
+      for (let v = 0; v < dist.length; v++) if (dist[v] === max) at.push(ids[v]);
+      return { max, at, unreachable, reached: dist.length - unreachable - 1 };
+    }
+
+    state.chains = {
+      hub: HUB,
+      undirected: reach(full, HUB),
+      outward: reach(dir.out, HUB),
+      inward: reach(dir.inn, HUB), // walking the arrows backwards = chains into the hub
+    };
+
+    // Groups: every maximal clique, keeping the ones worth naming, and the
+    // mixing of the two attributes the articles give us.
+    state.cliqueScan = cliqueScan(gcAdj, CLIQUE_FLOOR);
+    state.bigCliques = state.cliqueScan.kept;
+    state.cliqueView = "biggest";
+    state.homophily = {
+      team: homophily(gcAdj, cast, "team", LABEL_SHUFFLES, 7),
+      decade: homophily(gcAdj, cast, "decade", LABEL_SHUFFLES, 11),
+    };
 
     return state;
   }
@@ -963,6 +1128,8 @@
       closeness: Array.from({ length: n }, () => new Float64Array(SHUFFLES)),
     };
     const rValues = [];
+    const cliqueCounts = [];
+    const cliqueOmegas = [];
     const selectedIdx = state.gcIndex.get(state.selected);
     const t0 = performance.now();
 
@@ -974,6 +1141,11 @@
         samples.closeness[i][s] = c.closeness[i];
       }
       rValues.push(degreeAssortativity(shuffled));
+      if (s < CLIQUE_NULL_RUNS) {
+        const scan = cliqueScan(shuffled, CLIQUE_FLOOR);
+        cliqueCounts.push(scan.countAtLeast);
+        cliqueOmegas.push(scan.omega);
+      }
 
       if (s % 4 === 3 || s === SHUFFLES - 1) {
         drawNullHist(
@@ -996,6 +1168,12 @@
     state.nullSamples = samples;
     state.nullStats = stats;
     state.rNull = rStats;
+    state.cliqueNull = {
+      runs: cliqueCounts.length,
+      counts: meanSd(cliqueCounts),
+      omegaMax: Math.max(...cliqueOmegas),
+      omega: meanSd(cliqueOmegas),
+    };
 
     const elapsed = ((performance.now() - t0) / 1000).toFixed(1);
     logLine(`> ${SHUFFLES} shuffles in ${elapsed}s — null distributions ready for all ${n} characters`, "tline-done");
@@ -1015,6 +1193,7 @@
     );
 
     renderFindings(state, brokers);
+    renderCliqueNull(state);
     renderSuspect(state);
     btn.disabled = false;
     btn.textContent = "RUN ALIBI CHECK AGAIN";
@@ -1088,6 +1267,23 @@
     );
   }
 
+  // The cliques, held against the same shuffled networks the interrogation room
+  // builds: a group that survives the shuffle is a group the degree sequence
+  // does not already force.
+  function renderCliqueNull(state) {
+    const cn = state.cliqueNull;
+    if (!cn) return;
+    setHTML(
+      "finding-cliques",
+      `<strong>These groups are not an accident of who is popular.</strong> All ${cn.runs} shuffled networks from
+       the interrogation room — same characters, same number of links each, everything else rewired — were scanned
+       the same way. They turn up ${cn.counts.mean.toFixed(0)} &plusmn; ${cn.counts.sd.toFixed(0)} groups of
+       ${CLIQUE_FLOOR} or more against the ${state.cliqueScan.countAtLeast} the real network has, and the largest
+       group it ever managed was ${cn.omegaMax}, against ${state.cliqueScan.omega} here. Popularity alone does not
+       put ${state.cliqueScan.omega} characters in a room where every pair links to every other.`
+    );
+  }
+
   // ---------------------------------------------------------------
   // Gadget 2 — the chain tracer
   // ---------------------------------------------------------------
@@ -1116,6 +1312,28 @@
     for (let v = to; v !== -1; v = prev[v]) path.push(state.ids[v]);
     path.reverse();
     return { reachable: true, path, reached: queue.length };
+  }
+
+  function renderChainRecord(state) {
+    const ch = state.chains;
+    const hub = shortName(ch.hub);
+    const outFar = ch.outward.at[0];
+    const path = tracePath(state, ch.hub, outFar, true);
+    const chain = path.path.map((id) => `<span class="hop${id === ch.hub || id === outFar ? " end" : ""}">${shortName(id)}</span>`).join('<span class="arrow">&rarr;</span>');
+    const inward = ch.inward.at.map((id) => shortName(id)).join(", ");
+
+    setHTML(
+      "chain-record",
+      `<p><span class="record-label">Arrows off</span> No character is more than <strong>${ch.undirected.max} hops</strong>
+       from ${hub}; ${ch.undirected.at.length} of them sit at that distance, and ${ch.undirected.unreachable}
+       have no chain to him at all.</p>
+       <p><span class="record-label">Arrows on</span> ${hub} reaches ${ch.outward.reached} characters, and the
+       furthest of them is <strong>${shortName(outFar)}</strong>, ${ch.outward.max} clicks away${ch.outward.at.length > 1 ? ` (tied with ${ch.outward.at.slice(1).map(shortName).join(", ")})` : ""}.
+       ${ch.outward.unreachable} characters cannot be reached from his page at all.</p>
+       <div class="chain-body record-chain">${chain}</div>
+       <p><span class="record-label">Coming back</span> The longest chain <em>into</em> ${hub} is
+       ${ch.inward.max} hops, from ${inward}; ${ch.inward.unreachable} characters can never get to him.</p>`
+    );
   }
 
   function renderChain(state) {
@@ -1163,94 +1381,97 @@
   }
 
   // ---------------------------------------------------------------
-  // Gadget 3 — pull the thread
+  // Known associates — cliques and mixing
   // ---------------------------------------------------------------
-  function giantFractionAfterRemoval(state, order, steps) {
-    const n = state.gcAdj.length;
-    const removed = new Uint8Array(n);
-    const series = [];
-    for (let step = 0; step <= steps; step++) {
-      if (step > 0) removed[order[step - 1]] = 1;
-      const seen = new Uint8Array(n);
-      let best = 0;
-      let alive = 0;
-      for (let i = 0; i < n; i++) if (!removed[i]) alive++;
-      for (let s = 0; s < n; s++) {
-        if (removed[s] || seen[s]) continue;
-        let size = 0;
-        const queue = [s];
-        seen[s] = 1;
-        for (let qi = 0; qi < queue.length; qi++) {
-          const v = queue[qi];
-          size++;
-          for (const w of state.gcAdj[v]) {
-            if (!removed[w] && !seen[w]) {
-              seen[w] = 1;
-              queue.push(w);
-            }
-          }
-        }
-        if (size > best) best = size;
-      }
-      series.push(alive ? best / alive : 0);
-    }
-    return series;
+  const TEAM_INK = {
+    "X-Men": "#9c2b21",
+    Avengers: "#2f5e6b",
+    "Fantastic Four": "#1f5d3a",
+    Defenders: "#6b4f14",
+    "X-Force": "#7a3b6b",
+    "X-Factor": "#8a5a2b",
+    "Alpha Flight": "#385e8a",
+    Thunderbolts: "#6d4a2f",
+    "S.H.I.E.L.D.": "#4a4a4a",
+    "Guardians of the Galaxy": "#2f6b5c",
+    Inhumans: "#5c4a7a",
+    Eternals: "#7a6a2f",
+    "Heroes for Hire": "#8a4a3a",
+    "New Warriors": "#3a6b8a",
+    Excalibur: "#6b2f4a",
+    Asgard: "#8a6a2f",
+    Invaders: "#4a6b2f",
+    "Midnight Sons": "#4a2f5c",
+  };
+
+  function teamInk(team) {
+    return TEAM_INK[team] || INK_FAINT;
   }
 
-  // A small seeded generator so the "at random" curve is the same for every
-  // reader — a random baseline that changes on reload is not a baseline.
-  function seededShuffle(values, seed) {
-    const arr = values.slice();
-    let s = seed;
-    const rand = () => {
-      s = (s * 1664525 + 1013904223) % 4294967296;
-      return s / 4294967296;
-    };
-    for (let i = arr.length - 1; i > 0; i--) {
-      const j = Math.floor(rand() * (i + 1));
-      [arr[i], arr[j]] = [arr[j], arr[i]];
-    }
-    return arr;
+  function cliqueRow(state, clique) {
+    const teams = clique.map((i) => state.cast[i].team).filter(Boolean);
+    const counts = new Map();
+    teams.forEach((t) => counts.set(t, (counts.get(t) || 0) + 1));
+    const ranked = Array.from(counts).sort((a, b) => b[1] - a[1]);
+    const read = ranked.length
+      ? `${ranked[0][0]} ${ranked[0][1]}/${clique.length}` + (ranked.length > 1 ? ` &middot; ${ranked.length} teams` : "")
+      : "no team on file";
+    const chips = clique
+      .slice()
+      .sort((a, b) => state.cast[b].degree - state.cast[a].degree)
+      .map((i) => {
+        const c = state.cast[i];
+        const ink = teamInk(c.team);
+        return `<span class="chip" style="border-color:${ink};color:${ink}" title="${c.team || "no team on file"}">${shortName(c.id)}</span>`;
+      })
+      .join("");
+    return `<div class="clique-row"><span class="clique-size">${clique.length}</span>
+            <span class="clique-read">${read}</span><span class="clique-members">${chips}</span></div>`;
   }
 
-  function renderRemoval(state) {
-    const steps = 150; // far enough for the targeted orders to actually break the network
-    const byIdx = (key) =>
-      d3
-        .range(state.cast.length)
-        .sort((a, b) => state.cast[b][key] - state.cast[a][key])
-        .slice(0, steps);
-    const series = {
-      betweenness: giantFractionAfterRemoval(state, byIdx("betweenness"), steps),
-      degree: giantFractionAfterRemoval(state, byIdx("degree"), steps),
-      pagerank: giantFractionAfterRemoval(state, byIdx("pagerank"), steps),
-      random: giantFractionAfterRemoval(state, seededShuffle(d3.range(state.cast.length), 20260920).slice(0, steps), steps),
-    };
-    drawRemoval(document.getElementById("chart-removal"), series);
+  function renderCliques(state) {
+    const view = state.cliqueView === "mixed" ? "mixed" : "biggest";
+    const scored = state.bigCliques.map((clique) => {
+      const teams = new Set(clique.map((i) => state.cast[i].team).filter(Boolean));
+      return { clique, teams: teams.size };
+    });
+    const chosen =
+      view === "mixed"
+        ? scored.filter((d) => d.teams >= 3).sort((a, b) => b.teams - a.teams || b.clique.length - a.clique.length)
+        : scored.slice().sort((a, b) => b.clique.length - a.clique.length || a.teams - b.teams);
+    setHTML("clique-list", chosen.slice(0, 6).map((d) => cliqueRow(state, d.clique)).join(""));
+  }
 
-    const worst = d3
-      .range(state.cast.length)
-      .map((i) => ({ i, frac: giantFractionAfterRemoval(state, [i], 1)[1] }))
-      .sort((a, b) => a.frac - b.frac)[0];
-    const half = series.betweenness.findIndex((v) => v < 0.5);
-    const gap = d3.max(series.degree.map((v, i) => Math.abs(v - series.betweenness[i])));
-    const at = Math.min(120, steps);
-    setHTML(
-      "finding-removal",
-      `<strong>No single character holds this network together, and no single measure aims the attack better.</strong>
-       The most damaging removal in the entire cast — ${shortName(state.cast[worst.i].id)}, who else — still leaves
-       ${(worst.frac * 100).toFixed(1)}% of the survivors in one piece. It takes a campaign: the giant component
-       holds above 80% for the first 60 removals, and only past ${half} does it fall below half, collapsing to
-       ${(series.betweenness[steps] * 100).toFixed(0)}% by ${steps} while random removals still leave
-       ${(series.random[steps] * 100).toFixed(0)}% intact. That is the familiar picture — heavy-tailed networks
-       shrug off accidents and come apart under a targeted attack. Two details are ours rather than the textbook's.
-       Betweenness and degree never separate by more than ${(gap * 100).toFixed(0)} percentage points, so the
-       measure built to find brokers is no better at choosing whom to remove than simply counting links — because
-       it is mostly link count. And PageRank is the worst plan of the three: after ${at} removals it still leaves
-       ${(series.pagerank[at] * 100).toFixed(0)}% standing against betweenness's
-       ${(series.betweenness[at] * 100).toFixed(0)}%, because it ranks prestige in the directed network, which is
-       not the same thing as holding an undirected one together.`
-    );
+  function renderAssociates(state) {
+    const cast = state.cast;
+    const scan = state.cliqueScan;
+    const single = state.bigCliques.filter((c) => {
+      const teams = new Set(c.map((i) => cast[i].team).filter(Boolean));
+      return teams.size === 1;
+    }).length;
+    const mixed = state.bigCliques.filter((c) => new Set(c.map((i) => cast[i].team).filter(Boolean)).size >= 3).length;
+
+    setText("stat-omega", scan.omega);
+    setText("stat-cliques", scan.countAtLeast);
+    setText("clique-single", single);
+    setText("clique-mixed", mixed);
+    renderCliques(state);
+
+    ["team", "decade"].forEach((kind) => {
+      const h = state.homophily[kind];
+      drawPaperNull(
+        document.getElementById(`hist-${kind}`),
+        Array.from(h.null),
+        h.real,
+        `assortativity by ${kind} — ${h.reps} label shuffles`
+      );
+      setHTML(
+        `homophily-${kind}`,
+        `<strong>${h.real.toFixed(3)}</strong> across ${h.nodes} characters and ${h.links} links,
+         against ${h.mean.toFixed(3)} &plusmn; ${h.sd.toFixed(3)} when the labels are dealt out at random
+         (z = ${h.z.toFixed(1)}, best of ${h.reps} shuffles ${d3.max(h.null).toFixed(3)}).`
+      );
+    });
   }
 
   // ---------------------------------------------------------------
@@ -1380,6 +1601,16 @@
     renderChain(state);
   }
 
+  function setupCliqueToggle(state) {
+    document.querySelectorAll("[data-cliqueview]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        state.cliqueView = btn.getAttribute("data-cliqueview");
+        document.querySelectorAll("[data-cliqueview]").forEach((b) => b.classList.toggle("active", b === btn));
+        renderCliques(state);
+      });
+    });
+  }
+
   function setupZToggle(state) {
     document.querySelectorAll("[data-zmeasure]").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -1391,22 +1622,26 @@
   }
 
   async function init() {
-    const [nodesTxt, edgesTxt] = await Promise.all([
+    const [nodesTxt, edgesTxt, attributesTxt] = await Promise.all([
       fetch(NODES_URL).then((r) => r.text()),
       fetch(EDGES_URL).then((r) => r.text()),
+      fetch(ATTRIBUTES_URL).then((r) => r.text()),
     ]);
     const nodeRows = parseTSV(nodesTxt, ["node_id", "name", "wikidata_id", "url", "description"]);
     const edgeRows = parseTSV(edgesTxt, ["source", "target"], false);
-    const state = buildState(nodeRows, edgeRows);
+    const attributeRows = parseTSV(attributesTxt, ["node_id", "team", "decade"]);
+    const state = buildState(nodeRows, edgeRows, attributeRows);
     window.WLF3_STATE = state;
 
     renderBriefing(state);
     renderTopTens(state);
     renderDirection(state);
-    renderRemoval(state);
+    renderChainRecord(state);
+    renderAssociates(state);
     setupSuspectPicker(state);
     setupTracer(state);
     setupZToggle(state);
+    setupCliqueToggle(state);
     document.getElementById("run-check").addEventListener("click", () => runAlibiCheck(state));
   }
 
@@ -1418,7 +1653,10 @@
     renderFindings,
     renderTopTens,
     renderDirection,
-    renderRemoval,
+    renderAssociates,
+    renderCliques,
+    renderCliqueNull,
+    renderChainRecord,
     drawBetweennessScatter,
     drawZScatter,
     drawNullHist,
@@ -1441,9 +1679,11 @@
     edgeList,
     summariseNull,
     meanSd,
+    cliqueScan,
+    attributeAssortativity,
+    labelShuffleNull,
     buildState,
     tracePath,
-    giantFractionAfterRemoval,
   };
 
   if (document.getElementById("run-check")) {

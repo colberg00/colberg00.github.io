@@ -36,10 +36,14 @@
   <span id="rank-degree"></span><span id="rank-closeness"></span><span id="rank-harmonic"></span>
   <span id="rank-betweenness"></span><span id="rank-pagerank"></span>
   <div id="verdict"></div><div id="null-hist"></div>
-  <div id="chart-scatter"></div><div id="chart-z"></div><div id="chart-removal"></div>
+  <div id="chart-scatter"></div><div id="chart-z"></div>
+  <span id="stat-omega"></span><span id="stat-cliques"></span><span id="clique-single"></span><span id="clique-mixed"></span>
+  <div id="clique-list"></div><div id="hist-team"></div><div id="hist-decade"></div>
+  <span id="homophily-team"></span><span id="homophily-decade"></span>
+  <div id="chain-record"></div><div id="finding-cliques"></div>
   <table id="toptens"></table><span id="toptens-overlap"></span><table id="direction-table"></table>
   <div id="finding-alibi"></div><div id="finding-brokers"></div><div id="finding-closeness"></div>
-  <div id="finding-mixing"></div><div id="finding-direction"></div><div id="finding-removal"></div>
+  <div id="finding-mixing"></div><div id="finding-direction"></div>
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
@@ -93,10 +97,16 @@
       "Doctor_Strange", "Hulk", "She-Hulk", "Cloak_and_Dagger_(characters)", "Iron_Fist_(character)", "Scarlet_Witch"],
     pr_top10: ["Spider-Man", "Hulk", "Wolverine_(character)", "Doctor_Strange", "Black_Cat_(Marvel_Comics)",
       "Deadpool", "Mayday_Parker", "Venom_(character)", "Phoenix_Force", "Jean_Grey"],
-    remove_top_betweenness: 0.9818840579710145,
-    remove_60_betweenness: 0.8064516129032258,
     path_bill_spidey_undirected: 1,
     path_spidey_bill_directed: 5,
+    omega: 8, cliques_from_5: 153, cliques_single_team: 27, cliques_mixed: 28,
+    team: { nodes: 158, links: 852, r: 0.18606314991164288 },
+    decade: { nodes: 264, links: 1343, r: 0.07876282816376341 },
+    chains: {
+      undirected: { max: 3, at: 18, unreachable: 26 },
+      outward: { max: 6, at: ["Box_(comics)", "Motormouth_(comics)"], unreachable: 72 },
+      inward: { max: 4, at: 3, unreachable: 29 },
+    },
   };
 
   const rows = [];
@@ -124,10 +134,12 @@
   function run() {
     const nodesTxt = getSync("../week1_nodes.tsv");
     const edgesTxt = getSync("../week1_edges.tsv");
+    const attributesTxt = getSync("../week3_attributes.tsv");
     const W = window.WLF3;
     const nodeRows = W.parseTSV(nodesTxt, ["node_id", "name", "wikidata_id", "url", "description"]);
     const edgeRows = W.parseTSV(edgesTxt, ["source", "target"], false);
-    const state = W.buildState(nodeRows, edgeRows);
+    const attributeRows = W.parseTSV(attributesTxt, ["node_id", "team", "decade"]);
+    const state = W.buildState(nodeRows, edgeRows, attributeRows);
 
     record("nodes (all)", state.summary.n, EXPECTED.n_all);
     record("directed links", state.summary.m, EXPECTED.m_directed);
@@ -160,12 +172,36 @@
     const t2 = W.tracePath(state, "Spider-Man", "Beta_Ray_Bill", true);
     record("Spider-Man → Bill, arrows on (hops)", t2.path.length - 1, EXPECTED.path_spidey_bill_directed);
 
-    // removal
-    const order = d3.range(state.cast.length).sort((a, b) => state.cast[b].betweenness - state.cast[a].betweenness);
-    record("giant share after removing #1 broker", W.giantFractionAfterRemoval(state, order.slice(0, 1), 1)[1],
-      EXPECTED.remove_top_betweenness, 1e-12);
-    record("giant share after removing 60", W.giantFractionAfterRemoval(state, order.slice(0, 60), 60)[60],
-      EXPECTED.remove_60_betweenness, 1e-12);
+    // the end of the line
+    const ch = state.chains;
+    record("arrows off: longest chain to the hub", ch.undirected.max, EXPECTED.chains.undirected.max);
+    record("arrows off: characters at that distance", ch.undirected.at.length, EXPECTED.chains.undirected.at);
+    record("arrows off: no chain at all", ch.undirected.unreachable, EXPECTED.chains.undirected.unreachable);
+    record("arrows on: furthest from the hub", ch.outward.max, EXPECTED.chains.outward.max);
+    record("arrows on: who is furthest", ch.outward.at.slice().sort(), EXPECTED.chains.outward.at);
+    record("arrows on: unreachable from the hub", ch.outward.unreachable, EXPECTED.chains.outward.unreachable);
+    record("arrows on: longest chain into the hub", ch.inward.max, EXPECTED.chains.inward.max);
+    record("arrows on: cannot reach the hub", ch.inward.unreachable, EXPECTED.chains.inward.unreachable);
+
+    // cliques
+    record("clique number", state.cliqueScan.omega, EXPECTED.omega);
+    record("maximal cliques of 5 or more", state.cliqueScan.countAtLeast, EXPECTED.cliques_from_5);
+    record("kept cliques match the count", state.bigCliques.length, EXPECTED.cliques_from_5);
+    const teamsOf = (c) => new Set(c.map((i) => state.cast[i].team).filter(Boolean));
+    record("cliques inside one team", state.bigCliques.filter((c) => teamsOf(c).size === 1).length, EXPECTED.cliques_single_team);
+    record("cliques spanning three teams or more", state.bigCliques.filter((c) => teamsOf(c).size >= 3).length, EXPECTED.cliques_mixed);
+    record("every kept clique really is a clique", state.bigCliques.every((c) =>
+      c.every((a) => c.every((b) => a === b || state.gcAdj[a].includes(b)))) ? 1 : 0, 1);
+
+    // homophily
+    ["team", "decade"].forEach((kind) => {
+      const h = state.homophily[kind];
+      record(`${kind}: labelled characters`, h.nodes, EXPECTED[kind].nodes);
+      record(`${kind}: links between them`, h.links, EXPECTED[kind].links);
+      record(`${kind}: assortativity`, h.real, EXPECTED[kind].r, 1e-9);
+      record(`${kind}: label shuffles centre on zero`, Math.abs(h.mean) < 0.05 ? 1 : 0, 1);
+      record(`${kind}: real value beats every shuffle`, d3.max(Array.from(h.null)) < h.real ? 1 : 0, 1);
+    });
 
     // the shuffle must preserve every degree, keep the link count, and actually move links
     const before = state.gcAdj.map((l) => l.length);
@@ -234,21 +270,26 @@
       const U = window.WLF3_UI;
       U.renderTopTens(state);
       U.renderDirection(state);
-      U.renderRemoval(state);
       U.renderFindings(state, brokers);
+      U.renderChainRecord(state);
+      U.renderAssociates(state);
+      state.cliqueNull = { runs: 3, counts: W.meanSd([30, 41, 37]), omegaMax: 6, omega: W.meanSd([5, 6, 5]) };
+      U.renderCliqueNull(state);
       state.selected = "Hercules_(Marvel_Comics)";
       U.renderSuspect(state);
     } catch (e) {
       renderError = e.message;
     }
     record("rendering layer runs without throwing", renderError || "ok", "ok");
-    ["finding-alibi", "finding-brokers", "finding-closeness", "finding-mixing", "finding-direction", "finding-removal"].forEach((id) => {
+    ["finding-alibi", "finding-brokers", "finding-closeness", "finding-mixing", "finding-direction",
+     "finding-cliques", "chain-record", "clique-list", "homophily-team", "homophily-decade"].forEach((id) => {
       const el = document.getElementById(id);
       record(`${id} filled in`, el && el.innerHTML.trim().length > 80 ? 1 : 0, 1);
     });
     record("top tens table rendered", document.querySelectorAll("#toptens tbody tr").length, 10);
     record("direction table rendered", document.querySelectorAll("#direction-table tbody tr").length, 8);
-    record("charts drew SVGs", document.querySelectorAll("#chart-scatter svg, #chart-z svg, #chart-removal svg, #null-hist svg").length, 4);
+    record("charts drew SVGs", document.querySelectorAll("#chart-scatter svg, #chart-z svg, #null-hist svg, #hist-team svg, #hist-decade svg").length, 5);
+    record("clique rows rendered", document.querySelectorAll("#clique-list .clique-row").length, 6);
     record("verdict: Hercules", window.WLF3_UI.verdictFor(state, "Hercules_(Marvel_Comics)").code, "broker");
     record("verdict: Spider-Man", window.WLF3_UI.verdictFor(state, "Spider-Man").code, "alibi");
     record("verdict: Black Cat", window.WLF3_UI.verdictFor(state, "Black_Cat_(Marvel_Comics)").code, "sheltered");
