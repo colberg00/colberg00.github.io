@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case No. 03 — Person of Interest</title>
+<meta name="description" content="Four centrality measures name four different most-important Marvel characters. Shuffle the network 200 times in your browser and most of those names turn out to be nothing but degree. Week 3 case file for 02805 Social Graphs and Interactions.">
+<link rel="stylesheet" href="../assets/theme.css">
+<style>
+  .case-header{ text-align: center; padding: .5rem 0 2rem; }
+  .case-header .wlf-case-no{ display:block; margin-bottom:.4rem; }
+  .case-header h1{ font-size: 2.1rem; margin: 0 0 .6rem; }
+  .case-header p{ color: var(--ink-soft); max-width: 42rem; margin: 0 auto; }
+
+  .briefing{ display:grid; grid-template-columns: repeat(auto-fit,minmax(10rem,1fr)); gap: .9rem; margin: 1.75rem 0; }
+  .briefing .stat{ text-align:center; background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: .9rem .5rem; }
+  .briefing .stat .n{ font-family:'Special Elite',monospace; font-size:1.6rem; color: var(--red); display:block; }
+  .briefing .stat .l{ font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color: var(--ink-faint); }
+
+  /* ================= TERMINAL — the interrogation room ================= */
+  .terminal{
+    background: #0a120c;
+    border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(0,0,0,.55), 0 0 0 1px #1c2e20;
+    overflow: hidden;
+    margin: 1.75rem 0 2.5rem;
+  }
+  .terminal-titlebar{
+    background: linear-gradient(180deg, #1c2b1f, #121c15);
+    padding: .55rem .9rem;
+    display:flex; align-items:center; gap:.5rem;
+    border-bottom: 1px solid #24382a;
+  }
+  .terminal-dots{ display:flex; gap:.35rem; }
+  .terminal-dots span{ width:.6rem; height:.6rem; border-radius:50%; display:inline-block; }
+  .terminal-dots span:nth-child(1){ background:#a95149; }
+  .terminal-dots span:nth-child(2){ background:#c9a24a; }
+  .terminal-dots span:nth-child(3){ background:#4f9d5f; }
+  .terminal-title{ font-family:'Courier Prime', monospace; font-size:.78rem; color:#8fd9a0; letter-spacing:.06em; margin-left:.4rem; }
+  .terminal-body{
+    position: relative;
+    padding: 1.1rem 1.2rem 1.4rem;
+    color: #7CFFB2;
+    font-family: 'Courier Prime', monospace;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 3px),
+      radial-gradient(ellipse at top, rgba(79,251,132,0.05), transparent 60%);
+  }
+  .terminal-body::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,0.09) 0px, rgba(0,0,0,0.09) 1px, transparent 2px, transparent 4px);
+    mix-blend-mode: multiply; opacity:.35;
+  }
+  .terminal-body > *{ position: relative; z-index: 1; }
+  .term-intro{ font-size:.86rem; color:#9fe8ae; margin: 0 0 1rem; }
+  .term-intro .cursor{
+    display:inline-block; width:.55em; height:1em; background:#7CFFB2; vertical-align:-.15em;
+    animation: term-blink 1s steps(1) infinite;
+  }
+  @keyframes term-blink{ 50%{ opacity:0; } }
+
+  .suspect-row{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.8rem; }
+  .suspect-row input{
+    font-family:'Courier Prime', monospace; font-size:.85rem;
+    background:#050a06; color:#c8ffd6; border:1px solid #2f6b46; border-radius:2px;
+    padding:.5rem .7rem; min-width:16rem; flex:1 1 16rem;
+  }
+  .term-btn{
+    font-family:'Special Elite', monospace; font-size:.85rem;
+    background:#123a1e; color:#c8ffd6; border:1px solid #4ffb84; border-radius:2px;
+    padding:.5rem 1rem; cursor:pointer; letter-spacing:.03em;
+  }
+  .term-btn:hover{ background:#184a27; }
+  .term-btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .term-btn.ghost{ background:transparent; color:#8fd9a0; border-color:#2f6b46; }
+  .quick-row{ display:flex; flex-wrap:wrap; gap:.45rem; align-items:center; font-size:.76rem; color:#5f9c72; margin-bottom:1rem; }
+  .quick-btn{
+    font-family:'Courier Prime', monospace; font-size:.78rem;
+    background:transparent; color:#7CFFB2; border:1px solid #2f6b46; border-radius:2px;
+    padding:.35rem .6rem; cursor:pointer;
+  }
+  .quick-btn:hover{ border-color:#4ffb84; }
+
+  .susp-panels{ display:grid; grid-template-columns: 1fr 1fr; gap:1.1rem; }
+  @media (max-width: 52rem){ .susp-panels{ grid-template-columns: 1fr; } }
+  .susp-card{ background:#0d1810; border:1px solid #1f3826; border-radius:4px; padding:.8rem .9rem; }
+  .susp-card h4{ font-family:'Special Elite',monospace; color:#bff5cc; font-size:.9rem; margin:0 0 .5rem; letter-spacing:.04em; }
+  .susp-name{ font-family:'Special Elite',monospace; font-size:1.35rem; color:#c8ffd6; display:block; }
+  .susp-file{ font-size:.75rem; color:#5f9c72; display:block; margin:.25rem 0 .8rem; line-height:1.5; }
+  .susp-k{ color:#9fe8ae; }
+  .rank-grid{ display:grid; grid-template-columns: repeat(5, 1fr); gap:.4rem; }
+  .rank-grid .rk{ background:#050a06; border:1px solid #1f3826; border-radius:3px; padding:.45rem .3rem; text-align:center; }
+  .rank-grid .rk .rl{ font-size:.6rem; text-transform:uppercase; letter-spacing:.05em; color:#4f9d5f; display:block; }
+  .rank-grid .rk .rv{ font-family:'Special Elite',monospace; font-size:1.05rem; color:#c8ffd6; }
+  .hist-box{ background:#050a06; border:1px solid #1f3826; border-radius:4px; padding:.4rem; }
+  .hist-box svg{ width:100%; height:auto; display:block; }
+
+  .verdict{ border-radius:4px; padding:.7rem .85rem; margin-top:.8rem; border:1px solid; font-size:.82rem; line-height:1.55; }
+  .verdict .v-title{ display:block; font-family:'Special Elite',monospace; font-size:.92rem; letter-spacing:.05em; margin-bottom:.25rem; }
+  .verdict.pending{ border-color:#2f6b46; background:#0d1810; color:#8fd9a0; }
+  .verdict.alibi{ border-color:#c9a24a; background:#2a220f; color:#ffe6a6; }
+  .verdict.broker{ border-color:#4ffb84; background:#12301c; color:#c8ffd6; }
+  .verdict.sheltered{ border-color:#a95149; background:#2e1613; color:#ffcfc9; }
+  .verdict.no-case{ border-color:#3a4a3e; background:#101a13; color:#8fd9a0; }
+
+  .run-row{ display:flex; flex-wrap:wrap; gap:.7rem; align-items:center; margin-top:1rem; }
+  .run-progress{ font-size:.78rem; color:#8fd9a0; }
+  .term-log{
+    margin-top:.9rem; height:7.5rem; overflow-y:auto; background:#050a06; border:1px solid #1f3826;
+    border-radius:4px; padding:.6rem .7rem; font-size:.76rem; line-height:1.55;
+  }
+  .tline{ color:#6fce85; white-space:pre-wrap; }
+  .tline-done{ color:#ffe6a6; }
+
+  /* ================= paper sections ================= */
+  .chart-box{ background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
+  .chart-box svg{ width:100%; height:auto; display:block; }
+  .chart-caption{ font-size:.8rem; color: var(--ink-faint); margin-top:.5rem; text-align:center; }
+
+  .toggle-row{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin: .7rem 0; }
+  .toggle-btn{
+    font-family:'Courier Prime', monospace; font-size:.78rem;
+    background: var(--paper); color: var(--ink-soft); border:1px solid var(--line); border-radius:2px;
+    padding:.4rem .7rem; cursor:pointer;
+  }
+  .toggle-btn:hover{ border-color: var(--ink-faint); }
+  .toggle-btn.active{ background: var(--paper-alt); border-color: var(--ink); color: var(--ink); font-weight:bold; }
+
+  .data-table{ width:100%; border-collapse: collapse; font-size:.85rem; }
+  .data-table th, .data-table td{ padding:.4rem .5rem; border-bottom:1px solid var(--line); text-align:left; }
+  .data-table thead th{ font-family:'Special Elite',monospace; font-weight:normal; color: var(--ink-faint); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }
+  .data-table td.odd-one{ color: var(--red); }
+  .data-table td.move-up{ color:#3d5c3f; font-weight:bold; }
+  .data-table td.move-down{ color: var(--red); }
+  .data-table td.move-flat{ color: var(--ink-faint); }
+
+  .finding{ background: var(--paper-alt); border-left: 4px solid var(--red); padding: .9rem 1.1rem; margin: 1rem 0; font-size: .95rem; }
+
+  /* ================= chain tracer ================= */
+  .tracer{ background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.1rem; margin: 1.2rem 0; }
+  .tracer-row{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.6rem; }
+  .tracer-row input{
+    font-family:'Courier Prime', monospace; font-size:.85rem; background: var(--paper);
+    color: var(--ink); border:1px solid var(--line); border-radius:2px; padding:.45rem .6rem; min-width:14rem; flex:1 1 14rem;
+  }
+  .paper-btn{
+    font-family:'Special Elite', monospace; font-size:.82rem; background: var(--board-dark); color: var(--paper);
+    border:1px solid var(--board-dark); border-radius:2px; padding:.45rem .9rem; cursor:pointer;
+  }
+  .paper-btn:hover{ background: var(--board); }
+  .chain-row{ margin:.7rem 0; }
+  .chain-label{ display:block; font-size:.75rem; text-transform:uppercase; letter-spacing:.06em; color: var(--ink-faint); margin-bottom:.25rem; }
+  .chain-label em{ text-transform:none; letter-spacing:0; color: var(--ink-soft); }
+  .chain-body{ display:flex; flex-wrap:wrap; gap:.3rem; align-items:center; font-size:.88rem; }
+  .hop{ background: var(--paper); border:1px solid var(--line); border-radius:2px; padding:.15rem .45rem; }
+  .hop.end{ border-color: var(--red); color: var(--red); }
+  .arrow{ color: var(--ink-faint); }
+  .chain-row.broken .chain-body{ color: var(--red); font-style: italic; }
+  .trace-note, .trace-miss{ font-size:.82rem; color: var(--ink-soft); margin:.6rem 0 0; }
+  .trace-miss{ color: var(--red); }
+</style>
+</head>
+<body class="wlf">
+
+<div class="wlf-masthead">
+  <div class="wlf-masthead-inner">
+    <a class="wlf-brand" href="../index.html">THE WIKI-LINK FILES
+      <small>An investigation unit &middot; est. 2026</small>
+    </a>
+    <nav class="wlf-nav">
+      <a href="../index.html">Agency HQ</a>
+      <a href="week1.html">Case No. 01</a>
+      <a href="week2.html">Case No. 02</a>
+      <a href="week3.html">Case No. 03</a>
+      <a href="https://github.com/colberg00/colberg00.github.io">Source</a>
+    </nav>
+  </div>
+</div>
+
+<main class="wlf-main">
+
+  <div class="case-header">
+    <span class="wlf-stamp">Case No. 03 &middot; Open</span>
+    <h1>Person of Interest</h1>
+    <p>
+      Ask who matters most in the Marvel wiki-link network and four different measures give four different
+      answers. Ask the follow-up question &mdash; <em>compared to what?</em> &mdash; and most of those answers
+      fall apart. This file is about the suspects whose answers don't.
+    </p>
+  </div>
+
+  <h2>Research question</h2>
+  <p>
+    Spider-Man tops every centrality measure we can throw at the network, so the interesting question isn't who is
+    first. It's whether any character's <strong>position</strong> in the network is worth more than their raw number
+    of links. A character with 106 links will sit on a lot of shortest paths no matter how the network is wired, so
+    a big betweenness number on its own proves nothing. Which characters are genuine brokers &mdash; holding a
+    position that a character with their link count would <em>not</em> normally get &mdash; and which ones are just
+    popular?
+  </p>
+
+  <h2>Method, in one paragraph</h2>
+  <p class="wlf-muted">
+    We compute degree, closeness, harmonic, betweenness and PageRank on the 277-character giant component, then test
+    every character against the null model from Case No. 02: a <strong>degree-preserving shuffle</strong>, which
+    repeatedly picks two wiki-links and crosses their endpoints so that every character keeps their exact number of
+    links while who-links-to-whom is scrambled. Two hundred shuffles give every character a null distribution, and
+    the gap between their real score and that distribution &mdash; the z-score &mdash; is the only number in this
+    file we're willing to call a finding. Everything runs in your browser from the same two TSVs as the other
+    cases; the compute core is checked against our week 3 notebook (networkx) by
+    <a href="../tools/verify-week3.html">tools/verify-week3.html</a>, 62 checks, all passing.
+  </p>
+
+  <div class="briefing">
+    <div class="stat"><span class="n" id="stat-nodes">&hellip;</span><span class="l">Characters on file</span></div>
+    <div class="stat"><span class="n" id="stat-links">&hellip;</span><span class="l">Wiki-links</span></div>
+    <div class="stat"><span class="n" id="stat-gc">&hellip;</span><span class="l">In the giant component</span></div>
+    <div class="stat"><span class="n" id="stat-dist">&hellip;</span><span class="l">Avg distance &lang;d&rang;</span></div>
+    <div class="stat"><span class="n" id="stat-diameter">&hellip;</span><span class="l">Diameter</span></div>
+    <div class="stat"><span class="n" id="stat-overlap">&hellip;</span><span class="l">Names in all four top tens</span></div>
+  </div>
+
+  <h2>The Interrogation Room</h2>
+  <p>
+    Pick a character and run the check. The Agency shuffles the network 200 times, keeping every character's link
+    count exactly as it is, and asks what their betweenness would be if their position were pure chance. The
+    histogram is that null; the bright line is the real network. Three verdicts are possible: <strong>broker</strong>
+    (the real value sits above the null), <strong>alibi</strong> (the null explains it), and
+    <strong>sheltered</strong> (the network routes around them). Start with Spider-Man, then try the ones the
+    evidence board flags later on this page.
+  </p>
+
+  <div class="terminal">
+    <div class="terminal-titlebar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">AGENCY TOOLKIT — alibi-check.exe</span>
+    </div>
+    <div class="terminal-body">
+      <p class="term-intro">INTERROGATION ROOM // NULL-MODEL UNIT v1.0 — name a suspect<span class="cursor"></span></p>
+
+      <div class="suspect-row">
+        <input id="suspect-input" list="suspect-options" placeholder="type a character, e.g. Hercules" autocomplete="off">
+        <datalist id="suspect-options"></datalist>
+        <button class="term-btn" id="suspect-go">PULL FILE</button>
+      </div>
+      <div class="quick-row">
+        <span>quick files:</span>
+        <button class="quick-btn" data-suspect="Spider-Man">Spider-Man</button>
+        <button class="quick-btn" data-suspect="Hercules_(Marvel_Comics)">Hercules</button>
+        <button class="quick-btn" data-suspect="Black_Widow_(Natasha_Romanova)">Black Widow</button>
+        <button class="quick-btn" data-suspect="Black_Cat_(Marvel_Comics)">Black Cat</button>
+        <button class="quick-btn" data-suspect="Rockman_(character)">Rockman</button>
+      </div>
+
+      <div class="susp-panels">
+        <div class="susp-card">
+          <h4>Suspect file</h4>
+          <span class="susp-name" id="suspect-name">&hellip;</span>
+          <span class="susp-file" id="suspect-file"></span>
+          <div class="rank-grid">
+            <div class="rk"><span class="rl">Links</span><span class="rv" id="suspect-degree">&mdash;</span></div>
+            <div class="rk"><span class="rl">Degree</span><span class="rv" id="rank-degree">&mdash;</span></div>
+            <div class="rk"><span class="rl">Close</span><span class="rv" id="rank-closeness">&mdash;</span></div>
+            <div class="rk"><span class="rl">Between</span><span class="rv" id="rank-betweenness">&mdash;</span></div>
+            <div class="rk"><span class="rl">PageRank</span><span class="rv" id="rank-pagerank">&mdash;</span></div>
+          </div>
+          <div class="verdict pending" id="verdict"></div>
+          <div class="run-row">
+            <button class="term-btn" id="run-check">RUN ALIBI CHECK</button>
+            <span class="run-progress" id="check-progress">0 / 200</span>
+          </div>
+        </div>
+        <div class="susp-card">
+          <h4>What 200 shuffles say</h4>
+          <div class="hist-box"><div id="null-hist"></div></div>
+          <span class="susp-file" style="margin-top:.6rem">
+            Harmonic centrality rank: <span class="susp-k" id="rank-harmonic">&mdash;</span> &middot; the fifth
+            measure, kept off the file card because on a connected network it ranks almost identically to closeness.
+          </span>
+        </div>
+      </div>
+
+      <div class="term-log" id="check-log"></div>
+    </div>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Behind the case files &mdash; the evidence board</h2>
+
+  <h3>Betweenness against degree</h3>
+  <p class="wlf-muted">
+    Every character in the giant component, log axes, one dot each. The dashed line is what betweenness you'd expect
+    from link count alone. Sitting above the line is suggestive, not damning &mdash; that's what the shuffle test is
+    for &mdash; but this is where to look for suspects. Click a name in the interrogation room above and it lights
+    up red here.
+  </p>
+  <div class="chart-box">
+    <div id="chart-scatter"></div>
+    <div class="chart-caption">Betweenness vs degree &mdash; the ringed names are the biggest departures from the fit</div>
+  </div>
+
+  <h3>The board, after the shuffles</h3>
+  <p class="wlf-muted">
+    Same cast, but now every character's score is expressed as a z-score against their own 200 shuffles: how many
+    standard deviations their real centrality sits from what their link count buys. Above +2, the position is more
+    than the links. Below &minus;2, it is less. Switch to closeness to see a measure that has almost nothing to say.
+  </p>
+  <div class="toggle-row">
+    <button class="toggle-btn active" data-zmeasure="betweenness">BETWEENNESS</button>
+    <button class="toggle-btn" data-zmeasure="closeness">CLOSENESS</button>
+  </div>
+  <div class="chart-box">
+    <div id="chart-z"></div>
+    <div class="chart-caption">z-score against 200 degree-preserving shuffles &mdash; the board fills in once the check has run</div>
+  </div>
+
+  <h3>Four measures, four top tens</h3>
+  <p class="wlf-muted">
+    Degree asks who is popular, closeness who can reach everyone fastest, betweenness who sits between everyone
+    else, and PageRank who is pointed at by pages that matter. <span id="toptens-overlap">&hellip;</span> characters
+    make all four lists; the names in red are missing from at least one of them, which is where the measures
+    disagree.
+  </p>
+  <div class="chart-box" style="overflow-x:auto">
+    <table class="data-table" id="toptens"></table>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Case Analysis I &mdash; the alibi</h2>
+  <div class="finding" id="finding-alibi">The verdict on Spider-Man appears here once the alibi check has run.</div>
+  <div class="finding" id="finding-brokers">The characters whose position beats their link count appear here once the check has run.</div>
+  <p>
+    The one that still surprises us is <strong>Rockman</strong>, a character with two links and a betweenness far
+    above every other two-link character in the network. His second neighbour, The Witness, has no other link at all,
+    so every path out of The Witness has to go through Rockman. A nobody with a perfect position &mdash; and the
+    kind of thing a ranking by degree would never show you.
+  </p>
+  <div class="finding" id="finding-closeness">What the same test does to closeness appears here once the check has run.</div>
+  <div class="finding" id="finding-mixing">And what it does to the network's degree assortativity appears here.</div>
+
+  <hr class="wlf-hr">
+
+  <h2>Case Analysis II &mdash; the arrows</h2>
+  <p>
+    Everything above ignores the direction of the links, which is a convenient lie: a wiki-link points one way. Put
+    the arrows back and only about 69% of ordered character pairs can reach each other at all. Trace a chain below,
+    with arrows off and then on.
+  </p>
+
+  <div class="tracer">
+    <div class="tracer-row">
+      <input id="trace-input" list="trace-options" placeholder="character name" autocomplete="off">
+      <datalist id="trace-options"></datalist>
+      <button class="paper-btn" id="trace-go">TRACE TO SPIDER-MAN</button>
+    </div>
+    <div class="toggle-row">
+      <button class="toggle-btn active" data-arrows="off">ARROWS OFF (who mentions whom, either way)</button>
+      <button class="toggle-btn" data-arrows="on">ARROWS ON (follow the links)</button>
+    </div>
+    <div id="trace-result"></div>
+  </div>
+
+  <p class="wlf-muted">
+    The default, Beta Ray Bill, is our favourite one-way street: his article mentions a brief encounter with
+    Spider-Man, so it's one hop over. Coming back takes five, because Spider-Man's page links to only nine
+    characters and none of them lead anywhere near Bill.
+  </p>
+
+  <h3>Who gains and who loses when the arrows go back on</h3>
+  <div class="chart-box" style="overflow-x:auto">
+    <table class="data-table" id="direction-table"></table>
+  </div>
+  <div class="finding" id="finding-direction"></div>
+
+  <hr class="wlf-hr">
+
+  <h2>Case Analysis III &mdash; pull the thread</h2>
+  <p>
+    If brokers hold the network together, removing them should break it. We remove characters one at a time in four
+    different orders &mdash; most betweenness first, most links first, highest PageRank first, and at random &mdash;
+    and watch the largest surviving group shrink, all the way to 150 of the 277 characters removed. The orders are
+    fixed in advance from the intact network rather than recomputed after each removal, which is the cheaper and
+    more honest version of the experiment: it's what an attacker with one snapshot could actually do.
+  </p>
+  <div class="chart-box">
+    <div id="chart-removal"></div>
+    <div class="chart-caption">Giant component as a share of the surviving characters</div>
+  </div>
+  <div class="finding" id="finding-removal"></div>
+
+  <hr class="wlf-hr">
+
+  <h2>Discussion</h2>
+  <p>
+    Three weeks in, the Agency has a house rule. Case No. 01 found the hubs, Case No. 02 found out what it takes to
+    build them, and this one is about how easily a hub's shadow gets mistaken for a finding. Every headline number
+    here &mdash; Spider-Man's 23% of all shortest paths, the network's disassortativity, the entire closeness
+    ranking &mdash; is what the degree sequence alone produces. The shuffle is what separates a measurement from a
+    result, and it left us with a short list: a handful of genuine brokers in the middle of the ranking, a couple of
+    characters whose links are worth less than they look, and one two-link gatekeeper.
+  </p>
+  <p>
+    One finding this week that <em>isn't</em> about degree: characters link to characters from their own era.
+    Taking each character's first-appearance decade from the debut field of their Wikipedia infobox (found for 289
+    of the 303), the attribute assortativity is 0.079 against &minus;0.008 &plusmn; 0.011 for a thousand shuffles of
+    the labels across the same network &mdash; z = 7.9, and not one shuffle got there. It's a weak effect with a
+    strong signature, and it needs a different null from everything else on this page: here we shuffle the labels and
+    keep the links, because the question is about the labels. The catch is that the biggest hubs are mostly 1960s
+    characters, so some of that effect is popularity wearing a costume; a stricter test would shuffle decades only
+    among characters with similar degree.
+  </p>
+  <p>
+    What we'd flag for the next case. Our brokers are brokers <em>in Wikipedia's link structure</em>, which is a
+    record of what editors wrote, not of what happened in the comics &mdash; Hercules bridges the Avengers, the
+    cosmic characters and Asgard because someone wrote those paragraphs. The z-scores also assume the shuffled
+    values are roughly normal, which is fine for betweenness in the middle of the ranking and shakier out in the
+    tail where Rockman sits, so his z = 13 should be read as "off the scale", not as a precise number. And 200
+    shuffles is the floor for an empirical p-value: nothing here can be significant at better than 1 in 201.
+  </p>
+
+</main>
+
+<footer class="wlf-footer">
+  Case files updated weekly &middot; 02805 Social Graphs and Interactions &middot; Technical University of Denmark
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="../assets/week3.js"></script>
+</body>
+</html>

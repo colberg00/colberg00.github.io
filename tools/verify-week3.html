@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Verify — Case No. 03 compute core</title>
+<style>
+  body{ font-family: ui-monospace, "Courier New", monospace; background:#101410; color:#d8e6d8; padding:1.2rem; }
+  h1{ font-size:1.1rem; margin:0 0 .3rem; }
+  p.sub{ color:#89a189; margin:.2rem 0 1rem; font-size:.85rem; }
+  #summary{ font-size:1.5rem; padding:.6rem .9rem; border-radius:4px; display:inline-block; margin-bottom:1rem; }
+  .ok{ background:#17331f; color:#9dffbe; border:1px solid #3d7a52; }
+  .bad{ background:#3a1512; color:#ffb4ab; border:1px solid #a4352c; }
+  table{ border-collapse:collapse; font-size:.8rem; width:100%; }
+  td,th{ border-bottom:1px solid #26302a; padding:.22rem .45rem; text-align:left; }
+  td.v{ text-align:right; }
+  .pass{ color:#7ce2a0; }
+  .fail{ color:#ff8f84; font-weight:bold; }
+</style>
+</head>
+<body>
+<h1>Case No. 03 — compute core verification</h1>
+<p class="sub">
+  Runs assets/week3.js against values computed independently in the week 3 notebook
+  (networkx). Open it through a local web server: <code>python3 -m http.server</code> in
+  the repo root, then <code>/tools/verify-week3.html</code>.
+</p>
+<div id="summary">running…</div>
+<table id="results"><tbody></tbody></table>
+
+<!-- The post's element ids, so the rendering layer can be driven headlessly.
+     Hidden: this page is about numbers, not looks. -->
+<div id="ui-sandbox" style="display:none">
+  <span id="stat-nodes"></span><span id="stat-links"></span><span id="stat-gc"></span>
+  <span id="stat-dist"></span><span id="stat-diameter"></span><span id="stat-overlap"></span>
+  <span id="suspect-name"></span><span id="suspect-degree"></span><span id="suspect-file"></span>
+  <span id="rank-degree"></span><span id="rank-closeness"></span><span id="rank-harmonic"></span>
+  <span id="rank-betweenness"></span><span id="rank-pagerank"></span>
+  <div id="verdict"></div><div id="null-hist"></div>
+  <div id="chart-scatter"></div><div id="chart-z"></div><div id="chart-removal"></div>
+  <table id="toptens"></table><span id="toptens-overlap"></span><table id="direction-table"></table>
+  <div id="finding-alibi"></div><div id="finding-brokers"></div><div id="finding-closeness"></div>
+  <div id="finding-mixing"></div><div id="finding-direction"></div><div id="finding-removal"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="../assets/week3.js"></script>
+<script>
+(function () {
+  "use strict";
+  // Minimal stand-ins if the CDN is unreachable — the core only needs these two.
+  if (!window.d3) window.d3 = {};
+  if (!d3.range) d3.range = (n) => Array.from({ length: n }, (_, i) => i);
+  if (!d3.mean) d3.mean = (arr, f) => arr.reduce((s, v) => s + (f ? f(v) : v), 0) / arr.length;
+
+  // Every expected value below comes from notebooks/week3_who_matters.ipynb.
+  const EXPECTED = {
+    n_all: 303, m_directed: 1784, gc_nodes: 277, gc_links: 1421,
+    avg_distance: 2.674331606759797, diameter: 6,
+    assortativity: -0.10509846258823784,
+    betweenness: {
+      "Spider-Man": 0.2349468109924437,
+      "Hercules_(Marvel_Comics)": 0.03737937581542801,
+      "Black_Widow_(Natasha_Romanova)": 0.03512029844667589,
+      "U.S._Agent": 0.025459877680132557,
+      "Rockman_(character)": 0.007246376811594203,
+      "Black_Cat_(Marvel_Comics)": 0.007148938280803568,
+      "Betsy_Braddock": 0.011845985097113357,
+    },
+    closeness: {
+      "Spider-Man": 0.5948275862068966,
+      "Hercules_(Marvel_Comics)": 0.467005076142132,
+      "Rockman_(character)": 0.3161512027491409,
+      "Betsy_Braddock": 0.4623115577889447,
+    },
+    harmonic: {
+      "Spider-Man": 0.6811594202898551,
+      "Hercules_(Marvel_Comics)": 0.5090579710144929,
+      "Rockman_(character)": 0.33097826086956467,
+    },
+    pagerank: {
+      "Spider-Man": 0.05014692224482676,
+      "Black_Cat_(Marvel_Comics)": 0.017612397089843555,
+      "Hercules_(Marvel_Comics)": 0.012242763894826043,
+      "Rockman_(character)": 0.0005300211350978126,
+    },
+    betweenness_dir: {
+      "Spider-Man": 0.0685206964597281,
+      "Hercules_(Marvel_Comics)": 0.07309455551577093,
+      "Betsy_Braddock": 0.028485012179753546,
+      "Rockman_(character)": 0.0,
+    },
+    bet_dir_top10: ["Wolverine_(character)", "Hercules_(Marvel_Comics)", "Spider-Man", "Deadpool",
+      "Doctor_Strange", "Hulk", "She-Hulk", "Cloak_and_Dagger_(characters)", "Iron_Fist_(character)", "Scarlet_Witch"],
+    pr_top10: ["Spider-Man", "Hulk", "Wolverine_(character)", "Doctor_Strange", "Black_Cat_(Marvel_Comics)",
+      "Deadpool", "Mayday_Parker", "Venom_(character)", "Phoenix_Force", "Jean_Grey"],
+    remove_top_betweenness: 0.9818840579710145,
+    remove_60_betweenness: 0.8064516129032258,
+    path_bill_spidey_undirected: 1,
+    path_spidey_bill_directed: 5,
+  };
+
+  const rows = [];
+  let failures = 0;
+
+  function record(name, got, want, tol) {
+    let ok;
+    if (typeof want === "number") ok = Number.isFinite(got) && Math.abs(got - want) <= (tol || 1e-9);
+    else ok = JSON.stringify(got) === JSON.stringify(want);
+    if (!ok) failures++;
+    rows.push({ name, got, want, ok });
+  }
+
+  // Synchronous fetch on purpose: this page is screenshotted by a headless
+  // browser, which shoots on the load event, so the results have to be on the
+  // screen before that fires.
+  function getSync(url) {
+    const xhr = new XMLHttpRequest();
+    xhr.open("GET", url, false);
+    xhr.send(null);
+    if (xhr.status !== 200 && xhr.status !== 0) throw new Error(url + " -> HTTP " + xhr.status);
+    return xhr.responseText;
+  }
+
+  function run() {
+    const nodesTxt = getSync("../week1_nodes.tsv");
+    const edgesTxt = getSync("../week1_edges.tsv");
+    const W = window.WLF3;
+    const nodeRows = W.parseTSV(nodesTxt, ["node_id", "name", "wikidata_id", "url", "description"]);
+    const edgeRows = W.parseTSV(edgesTxt, ["source", "target"], false);
+    const state = W.buildState(nodeRows, edgeRows);
+
+    record("nodes (all)", state.summary.n, EXPECTED.n_all);
+    record("directed links", state.summary.m, EXPECTED.m_directed);
+    record("giant component nodes", state.summary.gcNodes, EXPECTED.gc_nodes);
+    record("giant component links", state.summary.gcLinks, EXPECTED.gc_links);
+    record("average distance", state.summary.avgDistance, EXPECTED.avg_distance, 1e-12);
+    record("diameter", state.summary.diameter, EXPECTED.diameter);
+    record("degree assortativity", state.summary.assortativity, EXPECTED.assortativity, 1e-12);
+
+    [["betweenness", "betweenness"], ["closeness", "closeness"], ["harmonic", "harmonic"],
+     ["pagerank", "pagerank"], ["betweenness_dir", "betweennessDir"]].forEach(([key, field]) => {
+      Object.entries(EXPECTED[key]).forEach(([id, want]) => {
+        record(`${key}: ${id}`, state.byId.get(id)[field], want, 1e-9);
+      });
+    });
+
+    const topDir = state.cast.slice().sort((a, b) => b.betweennessDir - a.betweennessDir).slice(0, 10).map((c) => c.id);
+    record("directed betweenness top 10", topDir, EXPECTED.bet_dir_top10);
+    const topPr = nodeRows.map((r) => r.node_id)
+      .map((id) => ({ id, pr: state.byId.has(id) ? state.byId.get(id).pagerank : -1 }));
+    // PageRank is computed on all 303 nodes, so rank it there rather than on the cast
+    const prAll = W.pagerank(state.dir.out, state.dir.inn, 0.85);
+    const topPrAll = d3.range(prAll.length).sort((a, b) => prAll[b] - prAll[a]).slice(0, 10).map((i) => state.ids[i]);
+    record("PageRank top 10", topPrAll, EXPECTED.pr_top10);
+    record("PageRank sums to 1", Array.from(prAll).reduce((s, v) => s + v, 0), 1, 1e-9);
+
+    // tracer
+    const t1 = W.tracePath(state, "Beta_Ray_Bill", "Spider-Man", false);
+    record("Bill → Spider-Man, arrows off (hops)", t1.path.length - 1, EXPECTED.path_bill_spidey_undirected);
+    const t2 = W.tracePath(state, "Spider-Man", "Beta_Ray_Bill", true);
+    record("Spider-Man → Bill, arrows on (hops)", t2.path.length - 1, EXPECTED.path_spidey_bill_directed);
+
+    // removal
+    const order = d3.range(state.cast.length).sort((a, b) => state.cast[b].betweenness - state.cast[a].betweenness);
+    record("giant share after removing #1 broker", W.giantFractionAfterRemoval(state, order.slice(0, 1), 1)[1],
+      EXPECTED.remove_top_betweenness, 1e-12);
+    record("giant share after removing 60", W.giantFractionAfterRemoval(state, order.slice(0, 60), 60)[60],
+      EXPECTED.remove_60_betweenness, 1e-12);
+
+    // the shuffle must preserve every degree, keep the link count, and actually move links
+    const before = state.gcAdj.map((l) => l.length);
+    let degreeBreaks = 0, linkBreaks = 0, identical = 0;
+    for (let s = 0; s < 5; s++) {
+      const sh = W.shuffledAdj(state.gcAdj, 10 * state.summary.gcLinks);
+      sh.forEach((l, i) => { if (l.length !== before[i]) degreeBreaks++; });
+      if (W.edgeList(sh).length !== state.summary.gcLinks) linkBreaks++;
+      const keep = W.edgeList(sh).filter(([a, b]) => state.gcAdj[a].includes(b)).length;
+      if (keep === state.summary.gcLinks) identical++;
+    }
+    record("shuffles keep every degree (5 runs)", degreeBreaks, 0);
+    record("shuffles keep the link count (5 runs)", linkBreaks, 0);
+    record("shuffles actually rewire (5 runs)", identical, 0);
+
+    // one shuffled network, scored: the null mean for Spider-Man should be near his real value
+    const sh = W.shuffledAdj(state.gcAdj, 10 * state.summary.gcLinks);
+    const c = W.centralities(sh);
+    const si = state.gcIndex.get("Spider-Man");
+    const within = Math.abs(c.betweenness[si] - state.byId.get("Spider-Man").betweenness) < 0.06;
+    record("shuffled Spider-Man betweenness within 0.06 of real", within ? 1 : 0, 1);
+
+    // The statistics the verdicts are built on: run a small null and check that
+    // the summary puts each character where the notebook's 200-shuffle run did
+    // (loose bounds — 20 shuffles is a noisy estimate, the signs and rough
+    // magnitudes are what matter).
+    const MINI = 20;
+    const miniSamples = {
+      betweenness: state.cast.map(() => new Float64Array(MINI)),
+      closeness: state.cast.map(() => new Float64Array(MINI)),
+    };
+    for (let s = 0; s < MINI; s++) {
+      const c2 = W.centralities(W.shuffledAdj(state.gcAdj, 10 * state.summary.gcLinks));
+      for (let i = 0; i < state.cast.length; i++) {
+        miniSamples.betweenness[i][s] = c2.betweenness[i];
+        miniSamples.closeness[i][s] = c2.closeness[i];
+      }
+    }
+    const miniStats = W.summariseNull(state.cast, miniSamples, ["betweenness", "closeness"]);
+    const zOf = (id) => miniStats.betweenness.z[state.gcIndex.get(id)];
+    const inRange = (v, lo, hi) => (v >= lo && v <= hi ? 1 : 0);
+    record("Spider-Man has an alibi (|z| < 2.5)", inRange(zOf("Spider-Man"), -2.5, 2.5), 1);
+    record("Hercules reads as a broker (z > 1.5)", inRange(zOf("Hercules_(Marvel_Comics)"), 1.5, 99), 1);
+    record("Black Widow reads as a broker (z > 1.5)", inRange(zOf("Black_Widow_(Natasha_Romanova)"), 1.5, 99), 1);
+    record("Black Cat reads as sheltered (z < -1)", inRange(zOf("Black_Cat_(Marvel_Comics)"), -99, -1), 1);
+    record("Rockman is off the scale (z > 3)", inRange(zOf("Rockman_(character)"), 3, 999), 1);
+    const degreeOne = state.cast.findIndex((c) => c.degree === 1);
+    record("degree-1 characters get z = NaN", Number.isNaN(miniStats.betweenness.z[degreeOne]) ? 1 : 0, 1);
+    const spiderNull = miniStats.betweenness.mean[state.gcIndex.get("Spider-Man")];
+    record("Spider-Man's null mean is near his real value", inRange(spiderNull, 0.19, 0.27), 1);
+    const atLeastSpider = miniStats.betweenness.atLeast[state.gcIndex.get("Spider-Man")];
+    record("shuffles reach Spider-Man's value (empirical p is not 0)", atLeastSpider > 0 ? 1 : 0, 1);
+
+    // Drive the rendering layer with those statistics: every finding on the page
+    // has to come out non-empty, and the verdicts have to land on the right
+    // side of the null.
+    state.nullSamples = miniSamples;
+    state.nullStats = miniStats;
+    state.rNull = W.meanSd(d3.range(6).map(() => W.degreeAssortativity(W.shuffledAdj(state.gcAdj, 10 * state.summary.gcLinks))));
+    const brokers = state.cast
+      .map((c, i) => ({ c, z: miniStats.betweenness.z[i] }))
+      .filter((d) => Number.isFinite(d.z))
+      .sort((a, b) => b.z - a.z);
+    let renderError = "";
+    try {
+      const U = window.WLF3_UI;
+      U.renderTopTens(state);
+      U.renderDirection(state);
+      U.renderRemoval(state);
+      U.renderFindings(state, brokers);
+      state.selected = "Hercules_(Marvel_Comics)";
+      U.renderSuspect(state);
+    } catch (e) {
+      renderError = e.message;
+    }
+    record("rendering layer runs without throwing", renderError || "ok", "ok");
+    ["finding-alibi", "finding-brokers", "finding-closeness", "finding-mixing", "finding-direction", "finding-removal"].forEach((id) => {
+      const el = document.getElementById(id);
+      record(`${id} filled in`, el && el.innerHTML.trim().length > 80 ? 1 : 0, 1);
+    });
+    record("top tens table rendered", document.querySelectorAll("#toptens tbody tr").length, 10);
+    record("direction table rendered", document.querySelectorAll("#direction-table tbody tr").length, 8);
+    record("charts drew SVGs", document.querySelectorAll("#chart-scatter svg, #chart-z svg, #chart-removal svg, #null-hist svg").length, 4);
+    record("verdict: Hercules", window.WLF3_UI.verdictFor(state, "Hercules_(Marvel_Comics)").code, "broker");
+    record("verdict: Spider-Man", window.WLF3_UI.verdictFor(state, "Spider-Man").code, "alibi");
+    record("verdict: Black Cat", window.WLF3_UI.verdictFor(state, "Black_Cat_(Marvel_Comics)").code, "sheltered");
+    const lonely = state.cast.find((c) => c.degree === 1).id;
+    record("verdict: a one-link character", window.WLF3_UI.verdictFor(state, lonely).code, "no-case");
+
+    const tbody = document.querySelector("#results tbody");
+    tbody.innerHTML = rows.map((r) => {
+      const fmt = (v) => (typeof v === "number" ? (Number.isInteger(v) ? v : v.toPrecision(10)) : JSON.stringify(v).slice(0, 90));
+      return `<tr><td class="${r.ok ? "pass" : "fail"}">${r.ok ? "PASS" : "FAIL"}</td><td>${r.name}</td>
+              <td class="v">${fmt(r.got)}</td><td class="v">${fmt(r.want)}</td></tr>`;
+    }).join("");
+    const summary = document.getElementById("summary");
+    summary.className = failures ? "bad" : "ok";
+    summary.textContent = failures ? `${failures} of ${rows.length} checks FAILED` : `all ${rows.length} checks passed`;
+  }
+
+  try {
+    run();
+  } catch (err) {
+    const summary = document.getElementById("summary");
+    summary.className = "bad";
+    summary.textContent = "ERROR: " + err.message;
+    console.error(err);
+  }
+})();
+</script>
+</body>
+</html>
