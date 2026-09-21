@@ -37,7 +37,7 @@
   <span id="rank-betweenness"></span><span id="rank-pagerank"></span>
   <div id="verdict"></div><div id="null-hist"></div>
   <div id="chart-scatter"></div><div id="chart-z"></div><div id="chart-removal"></div>
-  <div id="finding-removal"></div><span id="eigen-corr"></span><span id="eigen-value"></span>
+  <div id="finding-removal"></div><span id="eigen-corr"></span>
   <span id="rank-eigenvector"></span>
   <span id="stat-omega"></span><span id="stat-cliques"></span><span id="clique-single"></span><span id="clique-mixed"></span>
   <div id="clique-list"></div><div id="hist-team"></div><div id="hist-decade"></div>
@@ -341,7 +341,7 @@
     record("top tens table rendered", document.querySelectorAll("#toptens tbody tr").length, 10);
     record("direction table rendered", document.querySelectorAll("#direction-table tbody tr").length, 8);
     record("charts drew SVGs", document.querySelectorAll("#chart-scatter svg, #chart-z svg, #null-hist svg, #hist-team svg, #hist-decade svg, #chart-removal svg").length, 6);
-    record("eigenvector figures filled in", document.getElementById("eigen-value").textContent.length > 0 ? 1 : 0, 1);
+    record("eigenvector figure filled in", document.getElementById("eigen-corr").textContent.length > 0 ? 1 : 0, 1);
     record("clique rows rendered", document.querySelectorAll("#clique-list .clique-row").length, 6);
     record("verdict: Hercules", window.WLF3_UI.verdictFor(state, "Hercules_(Marvel_Comics)").code, "broker");
     record("verdict: Spider-Man", window.WLF3_UI.verdictFor(state, "Spider-Man").code, "alibi");

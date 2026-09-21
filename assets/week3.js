@@ -1818,7 +1818,6 @@
   function renderBriefing(state) {
     const s = state.summary;
     setText("eigen-corr", s.eigenVsDegree.toFixed(2));
-    setText("eigen-value", s.eigenvalue.toFixed(2));
     setText("stat-nodes", s.n);
     setText("stat-links", s.m.toLocaleString());
     setText("stat-gc", s.gcNodes);
