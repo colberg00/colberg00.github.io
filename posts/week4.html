@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Case No. 04 — Conflicting Testimony</title>
+<meta name="description" content="Louvain and Infomap disagree, Aristotle answers to six traditions at once, weights move philosophers between factions, and a disparity-filter backbone comes apart one bridge at a time. Week 4 case file for 02805 Social Graphs and Interactions.">
+<link rel="stylesheet" href="../assets/theme.css">
+<style>
+  .case-header{ text-align: center; padding: .5rem 0 2rem; }
+  .case-header .wlf-case-no{ display:block; margin-bottom:.4rem; }
+  .case-header h1{ font-size: 2.1rem; margin: 0 0 .6rem; }
+  .case-header p{ color: var(--ink-soft); max-width: 42rem; margin: 0 auto; }
+
+  .briefing{ display:grid; grid-template-columns: repeat(auto-fit,minmax(9.5rem,1fr)); gap: .9rem; margin: 1.75rem 0; }
+  .briefing .stat{ text-align:center; background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: .9rem .5rem; }
+  .briefing .stat .n{ font-family:'Special Elite',monospace; font-size:1.5rem; color: var(--red); display:block; }
+  .briefing .stat .l{ font-size:.7rem; text-transform:uppercase; letter-spacing:.07em; color: var(--ink-faint); }
+
+  .chart-box{ background: var(--paper-alt); border:1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
+  .chart-box svg{ width:100%; height:auto; display:block; }
+  .chart-caption{ font-size:.8rem; color: var(--ink-faint); margin-top:.5rem; text-align:center; }
+
+  .toggle-row{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin: .7rem 0; }
+  .toggle-btn{
+    font-family:'Courier Prime', monospace; font-size:.78rem;
+    background: var(--paper); color: var(--ink-soft); border:1px solid var(--line); border-radius:2px;
+    padding:.4rem .7rem; cursor:pointer;
+  }
+  .toggle-btn:hover{ border-color: var(--ink-faint); }
+  .toggle-btn.active{ background: var(--paper-alt); border-color: var(--ink); color: var(--ink); font-weight:bold; }
+
+  .data-table{ width:100%; border-collapse: collapse; font-size:.85rem; }
+  .data-table th, .data-table td{ padding:.4rem .5rem; border-bottom:1px solid var(--line); text-align:left; }
+  .data-table thead th{ font-family:'Special Elite',monospace; font-weight:normal; color: var(--ink-faint); font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }
+  .data-table td.odd-one{ color: var(--red); font-weight:bold; }
+  .data-table td.move-down{ color: var(--red); }
+
+  .finding{ background: var(--paper-alt); border-left: 4px solid var(--red); padding: .9rem 1.1rem; margin: 1rem 0; font-size: .95rem; }
+
+  .legend-row{ display:flex; flex-wrap:wrap; gap:.5rem 1rem; margin: .7rem 0 1.1rem; font-size:.8rem; color: var(--ink-soft); }
+  .legend-chip{ display:inline-flex; align-items:center; gap:.35rem; }
+  .legend-swatch{ width:.75rem; height:.75rem; border-radius:50%; display:inline-block; border:1px solid var(--ink); }
+
+  .two-col{ display:grid; grid-template-columns: 1fr 1fr; gap:1.1rem; }
+  @media (max-width: 46rem){ .two-col{ grid-template-columns: 1fr; } }
+
+  /* ---- terminal-style search tool, reused from Case No. 03 ---- */
+  .terminal{
+    background: #0a120c; border-radius: 8px;
+    box-shadow: 0 10px 28px rgba(0,0,0,.55), 0 0 0 1px #1c2e20;
+    overflow: hidden; margin: 1.5rem 0;
+  }
+  .terminal-titlebar{
+    background: linear-gradient(180deg, #1c2b1f, #121c15);
+    padding: .55rem .9rem; display:flex; align-items:center; gap:.5rem;
+    border-bottom: 1px solid #24382a;
+  }
+  .terminal-dots{ display:flex; gap:.35rem; }
+  .terminal-dots span{ width:.6rem; height:.6rem; border-radius:50%; display:inline-block; }
+  .terminal-dots span:nth-child(1){ background:#a95149; }
+  .terminal-dots span:nth-child(2){ background:#c9a24a; }
+  .terminal-dots span:nth-child(3){ background:#4f9d5f; }
+  .terminal-title{ font-family:'Courier Prime', monospace; font-size:.78rem; color:#8fd9a0; letter-spacing:.06em; margin-left:.4rem; }
+  .terminal-body{
+    position: relative; padding: 1.1rem 1.2rem 1.4rem; color: #7CFFB2;
+    font-family: 'Courier Prime', monospace;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0px, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 3px),
+      radial-gradient(ellipse at top, rgba(79,251,132,0.05), transparent 60%);
+  }
+  .term-intro{ font-size:.86rem; color:#9fe8ae; margin: 0 0 1rem; }
+  .search-row{ display:flex; flex-wrap:wrap; gap:.5rem; align-items:center; margin-bottom:.8rem; }
+  .search-row input{
+    font-family:'Courier Prime', monospace; font-size:.85rem;
+    background:#050a06; color:#c8ffd6; border:1px solid #2f6b46; border-radius:2px;
+    padding:.5rem .7rem; min-width:16rem; flex:1 1 16rem;
+  }
+  .term-btn{
+    font-family:'Special Elite', monospace; font-size:.85rem;
+    background:#123a1e; color:#c8ffd6; border:1px solid #4ffb84; border-radius:2px;
+    padding:.5rem 1rem; cursor:pointer; letter-spacing:.03em;
+  }
+  .term-btn:hover{ background:#184a27; }
+  #overlap-result{ font-size:.92rem; color:#c8ffd6; min-height:1.4em; }
+
+  /* ---- alpha slider ---- */
+  .slider-row{ display:flex; flex-wrap:wrap; gap:.9rem; align-items:center; margin:.8rem 0; font-size:.85rem; color: var(--ink-soft); }
+  .slider-row input[type=range]{ flex:1 1 16rem; accent-color: var(--red); }
+  .slider-readout{ font-family:'Special Elite',monospace; color: var(--red); min-width:4.5rem; text-align:right; }
+
+  .bridge-callout{
+    background: var(--paper); border: 2px dashed var(--red);
+    border-radius: var(--radius); padding: 1rem 1.2rem; margin: 1.2rem 0;
+    text-align: center; font-size: 1rem;
+  }
+  .bridge-callout strong{ color: var(--red); }
+</style>
+</head>
+<body class="wlf">
+
+<div class="wlf-masthead">
+  <div class="wlf-masthead-inner">
+    <a class="wlf-brand" href="../index.html">THE WIKI-LINK FILES
+      <small>An investigation unit &middot; est. 2026</small>
+    </a>
+    <nav class="wlf-nav">
+      <a href="../index.html">Agency HQ</a>
+      <details class="wlf-cases">
+        <summary>Case files</summary>
+        <div class="wlf-cases-menu">
+          <a href="week1.html"><strong>Case No. 01</strong> The Marvel Manhunt</a>
+          <a href="week2.html"><strong>Case No. 02</strong> Built, Not Born</a>
+          <a href="week3.html"><strong>Case No. 03</strong> Person of Interest</a>
+          <a href="week4.html" class="current" aria-current="page"><strong>Case No. 04</strong> Conflicting Testimony</a>
+        </div>
+      </details>
+      <a href="https://github.com/colberg00/colberg00.github.io">Source</a>
+    </nav>
+  </div>
+</div>
+
+<main class="wlf-main">
+
+  <div class="case-header">
+    <span class="wlf-stamp">Case No. 04 &middot; Open</span>
+    <h1>Conflicting Testimony</h1>
+    <p>
+      The Agency's beat moves for a week from Wikipedia's Marvel characters to its philosophers &mdash; 1,444 of
+      them, born anywhere from the centuries BC to the 19th century, wired together by 11,135 wiki-links. Ask this
+      network who its factions are and you get four different answers depending on who you ask: two community-detection
+      methods that only partly agree, one philosopher two different weighting schemes can't agree how to file, and a
+      backbone that holds together right up until, at a precise threshold, it doesn't.
+    </p>
+  </div>
+
+  <div class="briefing">
+    <div class="stat"><span class="n" id="stat-nodes">&hellip;</span><span class="l">Philosophers</span></div>
+    <div class="stat"><span class="n" id="stat-edges">&hellip;</span><span class="l">Undirected links</span></div>
+    <div class="stat"><span class="n" id="stat-gc">&hellip;</span><span class="l">In the giant component</span></div>
+    <div class="stat"><span class="n" id="stat-gc-pct">&hellip;</span><span class="l">Of all philosophers</span></div>
+    <div class="stat"><span class="n" id="stat-louvain-u">&hellip;</span><span class="l">Louvain factions</span></div>
+    <div class="stat"><span class="n" id="stat-infomap">&hellip;</span><span class="l">Infomap modules</span></div>
+  </div>
+
+  <h2>Method, in one paragraph</h2>
+  <p class="wlf-muted">
+    The network is Wikipedia's own web of citations among philosophers born before 1900, undirected and, where the
+    week calls for it, weighted by summing the link count in both directions between a pair of articles. Four
+    questions, four instruments: Louvain and Infomap for the disagreement in Section I; k-clique percolation for the
+    overlap in Section II; the same Louvain run again, this time on weighted links, for Section III; and the
+    disparity filter (Serrano, Bogu&ntilde;&aacute; &amp; Vespignani, 2009) for the backbone in Section IV. Everything
+    computes live in your browser straight from the two release TSVs; only Infomap and the k-clique scan, too heavy
+    to repeat on every page load, are precomputed by
+    <a href="https://github.com/colberg00/colberg00.github.io/blob/main/tools/build_week4_analysis.py">tools/build_week4_analysis.py</a>
+    and just loaded here.
+  </p>
+
+  <hr class="wlf-hr">
+
+  <h2>Section I &mdash; Two Detectives, One Case</h2>
+  <p>
+    Run Louvain and Infomap on the exact same undirected, unweighted network and they file different reports.
+    Louvain sees a handful of broad factions; Infomap sees dozens of narrow ones. Neither is wrong &mdash; they're
+    optimizing different things &mdash; but a reader who trusts one over the other is trusting a specific
+    mathematical bet, and the alluvial diagram below is what that bet looks like in practice.
+  </p>
+
+  <div class="briefing" style="grid-template-columns: repeat(auto-fit,minmax(11rem,1fr));">
+    <div class="stat"><span class="n" id="nmi-lu-im">&hellip;</span><span class="l">NMI, Louvain vs Infomap</span></div>
+    <div class="stat"><span class="n" id="nmi-lu-era">&hellip;</span><span class="l">NMI, Louvain vs era</span></div>
+    <div class="stat"><span class="n" id="nmi-im-era">&hellip;</span><span class="l">NMI, Infomap vs era</span></div>
+  </div>
+
+  <div class="chart-box">
+    <div id="chart-alluvial-1"></div>
+    <div class="chart-caption">Every Louvain faction (left) coloured, and where its members land among Infomap's modules (right). Ribbon width is philosopher count.</div>
+  </div>
+
+  <div class="finding" id="finding-lu-im">Computing&hellip;</div>
+
+  <h3>Naming Louvain's factions</h3>
+  <p class="wlf-muted">The five highest-degree philosophers in each Louvain faction, largest faction first.</p>
+  <div class="chart-box" style="overflow-x:auto">
+    <table class="data-table" id="louvain-naming"></table>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Section II &mdash; The Suspect with Divided Loyalties</h2>
+  <p>
+    Small k in a k-clique scan over-percolates &mdash; at k=3 and k=4, Aristotle's "community" swallows 60&ndash;85%
+    of the entire giant component, which is not a finding, it's the failure mode the course's own notes warn about.
+    Push k up to 6 or 7, where cliques are large enough to mean something, and a real answer appears: Aristotle sits
+    in <strong id="aristotle-k7">&hellip;</strong> separate, legible communities at once at k=7 (<span id="aristotle-k6">&hellip;</span>
+    at k=6) &mdash; Ancient Greek philosophy, the Islamic Golden Age, Pythagorean mathematics, and the German
+    Idealists two thousand years later all claim a piece of him.
+  </p>
+
+  <div class="toggle-row" id="ego-toggle">
+    <button class="toggle-btn active" data-k="k7">k = 7 (tight, legible)</button>
+    <button class="toggle-btn" data-k="k6">k = 6 (looser, bigger blobs)</button>
+  </div>
+  <div class="chart-box">
+    <div id="chart-ego"></div>
+    <div class="chart-caption" id="ego-caption">&hellip;</div>
+  </div>
+  <p class="wlf-muted">
+    Every slice of a node's pie is one clique-community it belongs to; a solid single colour means one community
+    only. Aristotle, ringed in gold, is the fullest pie on the board.
+  </p>
+
+  <h3>But is he really the most divided?</h3>
+  <p>
+    Before writing that up as the headline, we checked it against everyone else in the network. He isn't top of the
+    list.
+  </p>
+  <div class="chart-box" style="overflow-x:auto">
+    <table class="data-table" id="overlap-leaderboard"></table>
+  </div>
+  <div class="finding">
+    <strong id="leader-name">&hellip;</strong> tops the board with <strong id="leader-k7">&hellip;</strong> k=7
+    clique-communities, not Aristotle, who ranks <strong id="aristotle-rank">&hellip;</strong>. What both share is
+    the actual reason either number is high: both are exactly the kind of polymath a Wikipedia editor cites from
+    every direction, so they show up wherever a dense-enough clique forms. The overlap count isn't a ranking of eras,
+    it's a ranking of who got cited into the most different rooms.
+  </div>
+
+  <div class="terminal">
+    <div class="terminal-titlebar">
+      <div class="terminal-dots"><span></span><span></span><span></span></div>
+      <span class="terminal-title">AGENCY TOOLKIT — overlap-check.exe</span>
+    </div>
+    <div class="terminal-body">
+      <p class="term-intro">CROSS-EXAMINATION UNIT // OVERLAP LOOKUP &mdash; name a philosopher</p>
+      <div class="search-row">
+        <input id="overlap-input" list="overlap-options" placeholder="type a philosopher, e.g. Confucius" autocomplete="off">
+        <datalist id="overlap-options"></datalist>
+        <button class="term-btn" id="overlap-go">CHECK LOYALTIES</button>
+      </div>
+      <div id="overlap-result">Type a name and press Check Loyalties &mdash; or Enter.</div>
+    </div>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Section III &mdash; Does Volume Change the Verdict?</h2>
+  <p>
+    Same philosophers, same links, but now every link counts for how often the two articles actually reference each
+    other instead of just whether they do. Re-run Louvain on the weighted network and some philosophers change
+    faction &mdash; not because their links moved, but because which of their links matters most did.
+  </p>
+
+  <div class="briefing" style="grid-template-columns: repeat(auto-fit,minmax(11rem,1fr));">
+    <div class="stat"><span class="n" id="nmi-lu-lw">&hellip;</span><span class="l">NMI, unweighted vs weighted</span></div>
+    <div class="stat"><span class="n" id="stat-movers">&hellip;</span><span class="l">Philosophers who moved</span></div>
+    <div class="stat"><span class="n" id="stat-movers-pct">&hellip;</span><span class="l">Of the giant component</span></div>
+    <div class="stat"><span class="n" id="stat-louvain-w">&hellip;</span><span class="l">Weighted factions</span></div>
+  </div>
+
+  <div class="chart-box">
+    <div id="chart-alluvial-2"></div>
+    <div class="chart-caption">Unweighted Louvain factions (left) against weighted Louvain factions (right).</div>
+  </div>
+
+  <h3>Who moved, ranked by how much weight they carry</h3>
+  <div class="chart-box" style="overflow-x:auto">
+    <table class="data-table" id="movers-table"></table>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Section IV &mdash; The Backbone's Breaking Point</h2>
+  <p>
+    The disparity filter (Serrano, Bogu&ntilde;&aacute; &amp; Vespignani, 2009) keeps a link only if it's
+    significant at one of its two endpoints &mdash; the ones a low-degree node leans on, not just the ones a hub
+    happens to have. Drag &alpha; down from loose to strict and watch the giant component come apart, not all at
+    once, but branch by branch: first the philosophers connected to the rest by a single thread, then whole
+    traditions.
+  </p>
+
+  <div class="chart-box">
+    <div id="chart-backbone"></div>
+    <div class="chart-caption">Colour is the Louvain faction from Section I; node size marks giant-component membership. &alpha; = <span id="backbone-alpha-val">&hellip;</span> &middot; <span id="backbone-edges">&hellip;</span> links kept &middot; giant component <span id="backbone-giant">&hellip;</span> philosophers (<span id="backbone-giant-pct">&hellip;</span>)</div>
+  </div>
+
+  <div class="toggle-row" id="alpha-presets">
+    <button class="toggle-btn" data-alpha="0.35">LOOSE &middot; &alpha;=0.35</button>
+    <button class="toggle-btn" data-alpha="0.10">MEDIUM &middot; &alpha;=0.10</button>
+    <button class="toggle-btn" data-alpha="0.048">TIGHT &middot; &alpha;=0.048</button>
+  </div>
+  <div class="slider-row">
+    <span>drag it yourself:</span>
+    <input type="range" id="alpha-slider" min="0.01" max="0.6" step="0.002" value="0.35">
+    <span class="slider-readout" id="alpha-slider-readout">&alpha; = 0.35</span>
+  </div>
+
+  <div class="bridge-callout">
+    The single link that does the most damage: <strong id="bridge-a">&hellip;</strong> &harr; <strong id="bridge-b">&hellip;</strong>,
+    significant only down to &alpha;=<strong id="bridge-alpha">&hellip;</strong> &mdash; cut it and the backbone splits
+    into pieces of <strong id="bridge-sizes">&hellip;</strong> philosophers. (Trivia the Agency didn't go looking for:
+    the real David Hume and Jean-Jacques Rousseau had a spectacular real-life falling-out in 1766, a few years after
+    the Wikipedia-link version of them ends up glued together by exactly one thread.)
+  </div>
+
+  <h3>The six edges holding the network together</h3>
+  <p class="wlf-muted">Every merge event in the backbone's build-up, ranked by the size of the two pieces it joins &mdash; the closer to 50/50, the more that single link is load-bearing rather than just a hub picking up one more leaf.</p>
+  <div class="chart-box" style="overflow-x:auto">
+    <table class="data-table" id="bridge-table"></table>
+  </div>
+
+  <hr class="wlf-hr">
+
+  <h2>Discussion</h2>
+  <p>
+    We went in chasing three of this week's suggested threads and came out with a fourth we didn't plan for. Louvain
+    and Infomap agree enough to trust that the philosophers network really is clustered, and disagree enough that
+    neither deserves to be cited without the other in the room. Aristotle does belong to several traditions at
+    once &mdash; the exercise's suspicion was right &mdash; but the more interesting finding is that he isn't unusual
+    for it; overlap tracks influence, not antiquity. Weighting the network moves a real, non-trivial slice of
+    philosophers between factions, which is the cleanest evidence in this file that "communities" are a property of
+    the measurement, not just the philosopher. And the backbone, which we expected to snap once, instead peels off
+    entire traditions one at a time as &alpha; tightens &mdash; India and China first, by single threads to Voltaire
+    and Gaudapada, and only then, deep in the strict end, does the Western canon itself start splitting into Hume's
+    circle and Augustine's.
+  </p>
+  <p>
+    Three caveats. First, every method here answers to a proxy: era is a birth-century label, not a real account of
+    who influenced whom, so the "which method tells the better history of philosophy" numbers in Section I should be
+    read as weak evidence, not a verdict. Second, k-clique percolation is famous for being unstable in exactly the
+    range we used it (k=6&ndash;7); we checked two values of k and both told the same story, which is reassuring but
+    not proof against a third value telling a different one. Third, the disparity filter's "significant" edges are a
+    property of Wikipedia's editors, not of the philosophers themselves &mdash; a bridge like Confucius&ndash;Voltaire
+    says an editor thought it worth linking, which is real evidence of influence but not the only kind there is.
+  </p>
+
+</main>
+
+<footer class="wlf-footer">
+  Case files updated weekly &middot; 02805 Social Graphs and Interactions &middot; Technical University of Denmark
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="../assets/week4.js"></script>
+<script src="../assets/nav.js"></script>
+<script>
+  (function(){
+    var slider = document.getElementById('alpha-slider');
+    var readout = document.getElementById('alpha-slider-readout');
+    if (slider && readout) {
+      slider.addEventListener('input', function(){ readout.textContent = 'α = ' + (+slider.value).toFixed(3); });
+    }
+  })();
+</script>
+</body>
+</html>
