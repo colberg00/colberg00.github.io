@@ -241,8 +241,8 @@
     $$("[data-stat]").forEach((el) => countUp(el, stats[el.dataset.stat]));
 
     const t = d.tests;
-    $("#verdict-content").textContent = `content words: ρ = ${rho(t.content.rho_lift)}, p = ${t.content.p_lift} (label shuffle)`;
-    $("#verdict-style").textContent = `function words: ρ = ${rho(t.style.rho_lift)}, p = ${t.style.p_lift}`;
+    $("#verdict-content").textContent = `content words (stopwords removed): ρ = ${rho(t.content.rho_lift)}, p = ${t.content.p_lift}`;
+    $("#verdict-style").textContent = `stopwords only: ρ = ${rho(t.style.rho_lift)}, p = ${t.style.p_lift}`;
 
     $("#pipeline-table tbody").innerHTML = d.pipelines
       .map((p) => `<tr><td>${p.name}</td><td>${fmt(p.tokens)}</td><td>${fmt(p.types)}</td></tr>`)

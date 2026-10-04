@@ -493,7 +493,9 @@ def main():
         "meta": {"lines": len(lines), "episodes": len(episodes), "speakers": len(by_spk),
                  "tokens": len(spoken), "types": len(corpus), "core_threshold": MIN_TOKENS,
                  "sample_tokens": SAMPLE_TOKENS, "draws": N_DRAWS,
-                 "full_network": full_net, "share_top10_types": round(share_top10, 3)},
+                 "full_network": full_net, "share_top10_types": round(share_top10, 3),
+                 # word lists, so the page can colour a line by content vs function words
+                 "stopwords": sorted(STOPWORDS), "filler": sorted(FILLER - STOPWORDS)},
         "pipelines": pipelines,
         "zipf": {"points": zipf_all, "slope": zipf_slope, "top": top_words},
         "characters": characters,

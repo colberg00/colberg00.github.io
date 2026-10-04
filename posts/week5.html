@@ -275,6 +275,25 @@
   .two-up .fax{ margin: .6rem 0; }
   @media (max-width: 760px){ .two-up, .two-up.wide-left{ grid-template-columns: 1fr; } }
 
+  /* stopwords vs content words explainer */
+  .explainer{ background: #fff; padding: .9rem 1rem 1rem; margin: 1rem 0 .4rem; }
+  .ex-line{ background: var(--paper); border: 1px dashed var(--line); padding: .7rem .9rem; margin: .4rem 0 .8rem; }
+  .ex-quote{ font-family: Georgia, serif; font-size: 1.12rem; line-height: 1.9; }
+  .ex-quote .w, .ex-legend .w{ padding: .05rem .2rem; border-radius: 3px; }
+  .w.c{ background: #dbe7fa; color: #12366f; font-weight: bold; }
+  .w.f{ background: #ece8dc; color: #6f6a5c; }
+  .w.s{ background: transparent; color: #8d8776; font-style: italic; }
+  .ex-meta{ display:flex; justify-content: space-between; align-items:center; gap: .5rem; flex-wrap: wrap; font-size: 11.5px; color: var(--ink-faint); margin-top: .3rem; }
+  .ex-legend{ font-size: 11.5px; color: var(--ink-soft); margin-top: .4rem; display:flex; flex-wrap: wrap; gap: .3rem .8rem; align-items: center; }
+  .ex-cards{ display:grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+  @media (max-width: 640px){ .ex-cards{ grid-template-columns: 1fr; } }
+  .ex-card{ padding: .6rem .8rem; border-top: 4px solid; font-size: 12.5px; background: var(--paper); }
+  .ex-card.c{ border-color: #2a78d6; }
+  .ex-card.f{ border-color: #8d8776; }
+  .ex-card h4{ margin: 0 0 .3rem; font-size: 13.5px; color: var(--ink); }
+  .ex-card p{ margin: .35rem 0; }
+  .ex-course{ margin-top: .8rem; font-size: 12px; color: var(--ink-soft); background: #fdf6d3; border: 1px solid #e6d78f; padding: .5rem .7rem; }
+
   /* org chart + employee badge */
   .org-wrap{ display:grid; grid-template-columns: minmax(0,1fr) 230px; gap: 12px; align-items: start; }
   @media (max-width: 1000px){ .org-wrap{ grid-template-columns: 1fr; } }
@@ -538,11 +557,13 @@
           <div class="card">
             <div class="kicker">What they talk about</div>
             <div class="big">Yes &mdash; talking partners share topics.</div>
+            <div class="num">Measured on content words: <i>beets, paper, wedding&hellip;</i></div>
             <div class="num" id="verdict-content">&hellip;</div>
           </div>
           <div class="card no">
             <div class="kicker">How they talk</div>
             <div class="big">No &mdash; they don&rsquo;t share a style.</div>
+            <div class="num">Measured on stopwords: <i>the, I, you, of&hellip;</i></div>
             <div class="num" id="verdict-style">&hellip;</div>
           </div>
         </div>
@@ -585,13 +606,39 @@
       <div class="win-body">
         <div class="kicker">Network &times; bag-of-words cosine similarity &middot; the headline</div>
         <h2 id="h-org">Who talks to whom vs. who sounds like whom</h2>
-        <p>An edge is a conversational turn: one character speaks right after another in the same episode. Similarity is cosine between equal-size word samples, measured two ways: content words (TF-IDF) and function words (style).</p>
+        <p>An edge is a conversational turn: one character speaks right after another in the same episode. To say whether two people &ldquo;sound alike&rdquo; we compare their words in two separate ways, because every sentence is made of two very different kinds of word.</p>
+
+        <div class="explainer bevel" id="explainer">
+          <div class="kicker">Before the chart &middot; stopwords vs. content words</div>
+          <div class="ex-line" aria-live="polite">
+            <div class="ex-quote" id="ex-quote">&hellip;</div>
+            <div class="ex-meta"><span id="ex-who"></span> <button type="button" class="btn" id="ex-next">Show another line</button></div>
+            <div class="ex-legend"><span class="w c">content word</span> <span class="w f">stopword</span> <span class="w s">spoken filler (also removed)</span> <span id="ex-share"></span></div>
+          </div>
+          <div class="ex-cards">
+            <div class="ex-card c">
+              <h4>Content words = <i>what</i> you talk about</h4>
+              <p>What is left after <b>stopword removal</b>: the nouns, verbs and adjectives that carry the topic, like <i>beets, paper, Scranton, wedding, chili</i>. They change with the subject of the conversation. (We also drop spoken filler such as <i>yeah, okay, oh</i>, which the written-English stopword list doesn&rsquo;t know about.)</p>
+              <p><b>How we compare them:</b> count each character&rsquo;s content words and weight them with <b>TF-IDF</b>, so a word only a few characters use (<i>beets</i>) counts a lot and a word everyone uses counts little. Then take the <b>cosine similarity</b> of the two characters&rsquo; vectors.</p>
+              <p><b>High score</b> = the two talk about the same things. In the buttons below this is called <b>shared topics</b>.</p>
+            </div>
+            <div class="ex-card f">
+              <h4>Stopwords = <i>how</i> you talk</h4>
+              <p>The words a <b>stopword list</b> removes, also called <b>function words</b>: the small glue that holds every sentence together, like <i>the, I, you, of, and, is, that, it</i>. We use the 179 words of NLTK&rsquo;s English stopword list. They carry almost no topic, but they make up <b id="ex-fshare">about half</b> of everything said in the show.</p>
+              <p><b>How we compare them:</b> here we keep <i>only</i> the stopwords. We take the share of each one in a character&rsquo;s speech (how often <i>I</i> vs. <i>we</i>, <i>the</i> vs. <i>a</i>), then cosine similarity again. Authorship studies use exactly this signal to tell writers apart, because people use the glue without thinking about it.</p>
+              <p><b>High score</b> = the two build their sentences the same way. In the buttons below this is called <b>shared style</b>.</p>
+            </div>
+          </div>
+          <div class="ex-course">
+            <b>Where this comes from in week 5.</b> Section 2 defines <b>stopwords</b> as the very frequent <i>function words</i> and says removing them leaves the <i>content words</i>. We use that split twice: once with the stopwords removed, once with <i>only</i> the stopwords. Sections 4&ndash;5 turn each character into a bag-of-words vector and compare vectors with cosine similarity. One tool is borrowed a week early: <b>TF-IDF</b> is previewed in Section 6 as the fix for &ldquo;<i>the</i> and <i>and</i> dominate every comparison&rdquo;. Our function-word result is that exact problem, measured: compare characters on the glue words alone and everyone looks almost identical.
+          </div>
+        </div>
         <div class="controls">
           <label>Hide pairs with fewer than <b id="min-turns-out">80</b> turns
             <input type="range" id="min-turns" min="1" max="300" step="1" value="80"></label>
           <span class="seg" role="group" aria-label="Edge colour">
-            <button type="button" class="btn seg-btn active" data-edge="content">Colour: shared topics</button>
-            <button type="button" class="btn seg-btn" data-edge="style">Colour: shared style</button>
+            <button type="button" class="btn seg-btn active" data-edge="content">Line colour: shared topics (stopwords removed)</button>
+            <button type="button" class="btn seg-btn" data-edge="style">Line colour: shared style (stopwords only)</button>
           </span>
         </div>
         <div class="org-wrap">
@@ -610,8 +657,8 @@
         <p>Each dot is one of the 351 pairs of core characters. Left to right: how much more often they answer each other than random mixing predicts (&ldquo;lift&rdquo;, which stops Michael from winning every pair just by talking the most). Bottom to top: how alike their words are.</p>
         <div class="controls">
           <span class="seg" role="group" aria-label="Similarity measure">
-            <button type="button" class="btn seg-btn active" data-sim="content">Content words (TF-IDF)</button>
-            <button type="button" class="btn seg-btn" data-sim="style">Function words (style)</button>
+            <button type="button" class="btn seg-btn active" data-sim="content">Shared topics (stopwords removed)</button>
+            <button type="button" class="btn seg-btn" data-sim="style">Shared style (stopwords only)</button>
           </span>
           <button type="button" class="btn primary" id="shuffle-btn">&#128256; Shuffle the name tags &times;1,000</button>
         </div>
@@ -823,7 +870,7 @@
 <div id="firedrill" aria-hidden="true"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-<script src="../assets/week5.js?v=2"></script>
-<script src="../assets/week5-charts.js?v=6"></script>
+<script src="../assets/week5.js?v=3"></script>
+<script src="../assets/week5-charts.js?v=8"></script>
 </body>
 </html>

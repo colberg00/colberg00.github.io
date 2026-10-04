@@ -113,9 +113,46 @@
     register(() => ratings(d));
     game(d);
     $("#partial-rho").textContent = fmtRho(d.tests.content.partial_talk_given_episodes);
+    explainer(d);
   }
   document.addEventListener("dm5:data", (e) => boot(e.detail));
   if (window.DM5 && window.DM5.data) boot(window.DM5.data);
+
+  // ================================================================== CONTENT vs FUNCTION WORDS
+  // Colours a real line word by word with the same lists the analysis uses.
+  function explainer(d) {
+    const stop = new Set(d.meta.stopwords), filler = new Set(d.meta.filler);
+    const piped = Object.fromEntries(d.pipelines.map((p) => [p.name, p.tokens]));
+    const spoken = piped["+ drop [stage directions]"], noStop = piped["+ drop stopwords"];
+    if (spoken && noStop) $("#ex-fshare").textContent = `${Math.round((1 - noStop / spoken) * 100)}%`;
+
+    // short, wordy lines with a healthy mix of both kinds read best
+    const pool = d.game.quotes.filter((q) => {
+      const t = q.text.toLowerCase().match(/[a-z]+(?:'[a-z]+)?/g) || [];
+      const f = t.filter((w) => stop.has(w)).length;
+      return t.length >= 10 && t.length <= 22 && f >= 4 && t.length - f >= 4;
+    });
+    let i = Math.floor(Math.random() * pool.length);
+    function show() {
+      const q = pool[i % pool.length];
+      let nC = 0, nF = 0;
+      // keep the original punctuation and casing; split into word / non-word
+      // runs first and escape each run, so entities never get coloured
+      const html = q.text.split(/([A-Za-z]+(?:['’][A-Za-z]+)?)/).map((part, k) => {
+        if (k % 2 === 0) return esc(part);
+        const w = part.toLowerCase().replace("’", "'");
+        if (stop.has(w)) { nF++; return `<span class="w f">${esc(part)}</span>`; }
+        if (filler.has(w)) return `<span class="w s">${esc(part)}</span>`;
+        nC++;
+        return `<span class="w c">${esc(part)}</span>`;
+      }).join("");
+      $("#ex-quote").innerHTML = html;
+      $("#ex-who").textContent = `— ${q.speaker}, S${q.season} E${q.episode} “${q.title}”`;
+      $("#ex-share").textContent = `This line: ${nC} content words, ${nF} stopwords.`;
+    }
+    $("#ex-next").addEventListener("click", () => { i++; show(); });
+    show();
+  }
 
   // ================================================================== ZIPF
   function zipf(d) {
@@ -248,7 +285,7 @@
       howto("#legend-network", [
         ...comms.map(groupRow),
         [`<span class="ramp" style="width:16px;background:linear-gradient(90deg,${seqRamp(0)},${seqRamp(1)})"></span>`,
-          `<b>Line colour</b>: how alike the two people&rsquo;s ${edgeMode === "content" ? "<i>topics</i> (content words)" : "<i>style</i> (function words)"} are, from ${lo.toFixed(edgeMode === "style" ? 3 : 2)} (pale) to ${hi.toFixed(edgeMode === "style" ? 3 : 2)} (dark navy). <b>Line width</b>: how often they answer each other. <b>Dot size</b>: how much they talk.`],
+          `<b>Line colour</b>: how alike the two people&rsquo;s ${edgeMode === "content" ? "<i>topics</i> (content words, stopwords removed)" : "<i>style</i> (stopwords only)"} are, from ${lo.toFixed(edgeMode === "style" ? 3 : 2)} (pale) to ${hi.toFixed(edgeMode === "style" ? 3 : 2)} (dark navy). <b>Line width</b>: how often they answer each other. <b>Dot size</b>: how much they talk.`],
       ], `The colours come from <b>Louvain community detection</b>: an algorithm that splits the network into groups who talk more among themselves than to outsiders, using only who-answers-whom (never the words). It found two groups, and ${Math.round(d.within_group_turn_share * 100)}% of all turns happen inside one of them. We named the groups after reading who ended up in each. Hover a person to light up their ties; click for their file.`);
     }
 
@@ -342,7 +379,7 @@
         svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues([0.03, 0.1, 1, 10].filter((v) => v <= x.domain()[1])).tickFormat((v) => (v === 0.03 ? "never" : d3.format("~g")(v))));
         svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).ticks(5, mode === "style" ? ".3f" : ".2f"));
         svg.append("text").attr("x", W - m.r).attr("y", H - 4).attr("text-anchor", "end").text("talk lift (log; 1 = as often as chance)");
-        svg.append("text").attr("x", 4).attr("y", 12).text(mode === "content" ? "topic similarity" : "style similarity");
+        svg.append("text").attr("x", 4).attr("y", 12).text(mode === "content" ? "topic similarity (stopwords removed)" : "style similarity (stopwords only)");
         svg.append("line").attr("x1", x(1)).attr("x2", x(1)).attr("y1", m.t).attr("y2", H - m.b).attr("stroke", "#cfc9b8");
         svg.append("g").attr("class", "dots");
         svg.append("g").attr("class", "hl");
@@ -377,7 +414,7 @@
         ['<span class="ln" style="background:#cfc9b8;width:3px;height:14px"></span>', `<b>Grey line</b>: lift = 1, where a pair talks exactly as often as chance predicts. Right of it = they seek each other out. The &ldquo;never&rdquo; column on the far left holds the ${never} pairs who never answer each other.`],
       ], mode === "content"
         ? "If talking partners share topics, the cloud should tilt up to the right. It does, gently, and the shuffle test on the right shows it isn&rsquo;t luck."
-        : `Style similarity is almost the same for every pair (all between ${d3.min(pairs, (p) => p.style).toFixed(2)} and ${d3.max(pairs, (p) => p.style).toFixed(2)}): everyone uses &ldquo;the&rdquo;, &ldquo;I&rdquo; and &ldquo;you&rdquo; at similar rates, and the cloud doesn&rsquo;t tilt.`);
+        : `Similarity on stopwords alone is almost the same for every pair (all between ${d3.min(pairs, (p) => p.style).toFixed(2)} and ${d3.max(pairs, (p) => p.style).toFixed(2)}): everyone uses &ldquo;the&rdquo;, &ldquo;I&rdquo; and &ldquo;you&rdquo; at similar rates, and the cloud doesn&rsquo;t tilt.`);
     }
 
     function drawNull() {
