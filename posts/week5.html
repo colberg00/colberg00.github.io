@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Week 05 — Dunder Mifflin Intranet</title>
+<meta name="description" content="Do characters on The Office who talk to each other also sound alike? Tokenization, Zipf, collocations, concordances and bag-of-words cosine similarity on 55,130 lines of transcript, filed on the Scranton branch intranet. Week 5 for 02805 Social Graphs and Interactions.">
+<style>
+  /* Scranton branch intranet, circa 2007. Deliberately its own look: the
+     rest of the site is a detective agency, this week is a paper company. */
+  :root{
+    --desk: #d9d4c7;          /* beige office wall */
+    --desk-dark: #c7c0ae;
+    --panel: #f4f1e8;         /* window body */
+    --paper: #fffef9;
+    --ink: #1f2430;
+    --ink-soft: #4a5161;
+    --ink-faint: #7b8191;
+    --line: #a9a392;
+    --navy: #1d3a6b;          /* corporate toolbar */
+    --navy-2: #2f5596;
+    --title-a: #3a6fc4;       /* window title bar gradient */
+    --title-b: #1c4b9a;
+    --gold: #e0b43a;
+    --red: #b3261e;
+    --green: #2e7d32;
+    --sticky: #fff27a;
+    --bevel-hi: #ffffff;
+    --bevel-lo: #8d8776;
+    --mono: "Courier New", Courier, monospace;
+    --ui: Tahoma, Verdana, Geneva, "Segoe UI", sans-serif;
+  }
+  *{ box-sizing: border-box; }
+  html{ scroll-behavior: smooth; scroll-padding-top: 5.5rem; }
+  body{
+    margin:0; font-family: var(--ui); font-size: 14px; line-height: 1.55; color: var(--ink);
+    background:
+      repeating-linear-gradient(90deg, rgba(0,0,0,.018) 0 2px, transparent 2px 6px),
+      var(--desk);
+  }
+  body.busy, body.busy *{ cursor: progress !important; }
+  a{ color: var(--navy-2); }
+  a:hover{ color: var(--red); }
+  :focus-visible{ outline: 2px dotted var(--ink); outline-offset: 2px; }
+  #main:focus{ outline: none; }
+  .sr-only{ position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+
+  /* ------------------------------------------------------------ bevel kit */
+  .bevel{ border:2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); }
+  .inset{ border:2px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+  .btn{
+    font-family: var(--ui); font-size: 12px; color: var(--ink);
+    background: linear-gradient(#fbfaf6, #e4dfd2); padding: .3rem .8rem; cursor: pointer;
+    border:2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+    border-radius: 3px;
+  }
+  .btn:hover{ background: linear-gradient(#fff, #ece8dc); }
+  .btn:active{ border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+  .btn.primary{ background: linear-gradient(#5a8be0, #2d5bb0); color:#fff; border-color:#9dbcf0 #183a78 #183a78 #9dbcf0; }
+
+  /* ------------------------------------------------------------ login screen */
+  #login{
+    position: fixed; inset: 0; z-index: 100; display:flex; align-items:center; justify-content:center;
+    background: radial-gradient(ellipse at center, #3f6db8 0%, #1d3a6b 70%, #0f2244 100%);
+    padding: 16px;
+  }
+  #login[hidden]{ display:none; }
+  .login-box{ width: 100%; max-width: 420px; background: var(--panel); box-shadow: 0 18px 50px rgba(0,0,0,.5); }
+  .login-banner{ background: linear-gradient(var(--title-a), var(--title-b)); color:#fff; padding: 1.1rem 1.2rem .9rem; }
+  .login-banner .dm{ font-family: Georgia, "Times New Roman", serif; font-size: 1.6rem; letter-spacing: .02em; line-height:1.1; }
+  .login-banner small{ display:block; font-size: 11px; opacity:.85; margin-top:.25rem; }
+  .login-form{ padding: 1.1rem 1.2rem 1.2rem; display:grid; grid-template-columns: auto 1fr; gap: .55rem .8rem; align-items:center; }
+  .login-form label{ font-size: 12px; text-align:right; }
+  .login-form .field{ background:#fff; font-family: var(--mono); font-size: 14px; padding:.25rem .4rem; min-height: 1.9rem; }
+  .login-form .caret{ display:inline-block; width:1px; height:1em; background:var(--ink); vertical-align:-2px; animation: blink 1s steps(1) infinite; }
+  .login-actions{ grid-column: 1 / -1; display:flex; justify-content:space-between; align-items:center; gap:.5rem; margin-top:.3rem; }
+  .login-hint{ grid-column: 1 / -1; font-size: 12px; background: var(--sticky); padding:.45rem .6rem; transform: rotate(-1deg); box-shadow: 1px 2px 4px rgba(0,0,0,.2); }
+  .login-hint[hidden]{ display:none; }
+  .login-legal{ font-size: 10px; color: var(--ink-faint); padding: 0 1.2rem .9rem; }
+  @keyframes blink{ 50%{ opacity:0; } }
+
+  /* ------------------------------------------------------------ toolbar */
+  .topbar{
+    position: sticky; top:0; z-index: 30;
+    background: linear-gradient(var(--navy-2), var(--navy)); color:#fff;
+    border-bottom: 3px solid var(--gold);
+  }
+  .topbar-inner{ max-width: 1240px; margin:0 auto; padding: .45rem 16px; display:flex; align-items:center; gap: 1rem; flex-wrap: wrap; }
+  .wordmark{ font-family: Georgia, "Times New Roman", serif; font-size: 1.35rem; line-height:1; color:#fff; text-decoration:none; letter-spacing:.01em; }
+  .wordmark small{ display:block; font-family: var(--ui); font-size: 10px; letter-spacing:.12em; text-transform:uppercase; opacity:.8; margin-top:.2rem; }
+  .topbar-right{ margin-left:auto; display:flex; align-items:center; gap: .9rem; font-size: 12px; flex-wrap: wrap; }
+  .topbar-right a{ color:#fff; }
+  .topbar-right a:hover{ color: var(--gold); }
+  #clock{ font-family: var(--mono); background: rgba(0,0,0,.25); padding: .1rem .45rem; }
+  .ticker{ background: #fdf6d3; color: var(--ink); border-top:1px solid #e6d78f; font-size: 12px; overflow: hidden; white-space: nowrap; }
+  .ticker-track{ display:inline-block; padding: .25rem 0; animation: ticker 70s linear infinite; }
+  .ticker-track span{ margin-right: 3rem; }
+  .ticker-track b{ color: var(--red); }
+  .ticker:hover .ticker-track{ animation-play-state: paused; }
+  @keyframes ticker{ from{ transform: translateX(100vw); } to{ transform: translateX(-100%); } }
+
+  /* ------------------------------------------------------------ layout */
+  .layout{ max-width: 1240px; margin: 0 auto; padding: 16px; display:grid; grid-template-columns: 230px minmax(0,1fr); gap: 16px; align-items:start; }
+  @media (max-width: 860px){ .layout{ grid-template-columns: 1fr; } }
+
+  /* sidebar */
+  .sidebar{ position: sticky; top: 5.6rem; display:flex; flex-direction:column; gap: 12px; }
+  @media (max-width: 860px){ .sidebar{ position: static; } }
+  .side-box{ background: var(--panel); }
+  .side-box h3{ margin:0; font-size: 11px; text-transform:uppercase; letter-spacing:.08em; color:#fff; background: linear-gradient(var(--title-a), var(--title-b)); padding: .3rem .55rem; }
+  .side-nav{ list-style:none; margin:0; padding: .3rem 0; }
+  .side-nav a{ display:flex; gap:.5rem; align-items:center; padding: .3rem .6rem; text-decoration:none; color: var(--ink); font-size: 12.5px; border-left: 3px solid transparent; }
+  .side-nav a:hover{ background: #e8e3d4; }
+  .side-nav a.active{ background: #dbe5f7; border-left-color: var(--navy-2); font-weight: bold; }
+  .side-nav .ico{ width: 1.2rem; text-align:center; }
+  @media (max-width: 860px){ .side-nav{ display:flex; flex-wrap:wrap; } .side-nav li{ flex: 1 1 45%; } }
+  .side-body{ padding: .6rem; font-size: 12px; }
+  .bucks{ font-family: var(--mono); font-size: 1.25rem; color: var(--green); }
+  .eggs-found{ font-family: var(--mono); }
+  .counter{ font-family: var(--mono); background:#000; color:#3f3; padding:.1rem .4rem; letter-spacing:.15em; display:inline-block; }
+
+  @media (max-width: 860px){
+    .sidebar{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .sidebar > .side-box:first-child{ grid-column: 1 / -1; }
+    .side-stats{ display:none; }
+    .topbar-right .who{ display:none; }
+    html{ scroll-padding-top: 4.5rem; }
+  }
+  /* desk toys */
+  .desk{ display:flex; gap: .7rem; align-items:flex-end; justify-content:center; padding: .7rem .4rem .5rem; }
+  .desk button{ background:none; border:0; padding:0; cursor:pointer; }
+  .jello{
+    width: 74px; height: 46px; position: relative;
+    background: linear-gradient(180deg, rgba(255,233,77,.85), rgba(240,190,20,.9));
+    border-radius: 8px 8px 5px 5px; box-shadow: inset 0 -6px 10px rgba(160,110,0,.35), inset 0 4px 6px rgba(255,255,255,.6);
+    transform-origin: 50% 100%;
+  }
+  .jello::after{ /* the stapler, suspended */
+    content:""; position:absolute; left: 14px; top: 16px; width: 44px; height: 12px;
+    background: linear-gradient(#cf2d24, #8f1912); border-radius: 3px 6px 2px 2px; opacity:.75;
+  }
+  .jello.wobble{ animation: wobble .9s ease; }
+  @keyframes wobble{
+    0%{ transform: scale(1,1); } 15%{ transform: scale(1.12,.86) skewX(4deg); } 30%{ transform: scale(.9,1.1) skewX(-4deg); }
+    45%{ transform: scale(1.06,.94) skewX(2deg); } 60%{ transform: scale(.97,1.03); } 100%{ transform: scale(1,1); }
+  }
+  .mug{ width: 46px; height: 50px; background: #fff; border-radius: 0 0 8px 8px; position:relative; border:1px solid #bbb; font-size: 6.5px; line-height:1.15; text-align:center; padding-top: 9px; font-weight:bold; color:#222; }
+  .mug::after{ content:""; position:absolute; right:-11px; top: 12px; width: 12px; height: 20px; border: 3px solid #fff; border-left:0; border-radius: 0 9px 9px 0; box-shadow: 1px 0 0 #bbb; }
+  .mug.steam::before{ content:"~ ~"; position:absolute; top:-16px; left:0; right:0; color:#999; font-size: 12px; animation: steam 1.6s ease-out; }
+  @keyframes steam{ from{ opacity:1; transform: translateY(0);} to{ opacity:0; transform: translateY(-10px);} }
+
+  /* ------------------------------------------------------------ windows */
+  .content{ display:flex; flex-direction:column; gap: 16px; min-width: 0; }
+  .window{ background: var(--panel); box-shadow: 2px 3px 0 rgba(0,0,0,.12); }
+  .titlebar{
+    display:flex; align-items:center; gap:.5rem;
+    background: linear-gradient(var(--title-a), var(--title-b)); color:#fff;
+    padding: .3rem .4rem .3rem .6rem; font-weight: bold; font-size: 12.5px; user-select:none;
+  }
+  .titlebar .t-ico{ font-size: 14px; }
+  .titlebar .t-name{ flex:1; white-space: nowrap; overflow:hidden; text-overflow: ellipsis; }
+  .t-btns{ display:flex; gap:2px; }
+  .t-btns span{ width: 18px; height: 16px; display:inline-flex; align-items:center; justify-content:center; font-size: 10px; color: var(--ink);
+    background: linear-gradient(#fbfaf6, #ddd7c8); border:1px solid; border-color: #fff #6d6858 #6d6858 #fff; }
+  .menubar{ font-size: 12px; padding: .15rem .5rem; border-bottom: 1px solid var(--line); background: #ece8dc; color: var(--ink-soft); }
+  .menubar u{ text-decoration: underline; }
+  .menubar span{ margin-right: .9rem; }
+  .win-body{ padding: 1rem 1.2rem 1.2rem; }
+  .win-body h2{ font-family: Georgia, "Times New Roman", serif; font-weight: normal; font-size: 1.6rem; margin: .1rem 0 .4rem; color: var(--navy); }
+  .win-body h3{ font-size: 14px; margin: 1.2rem 0 .3rem; color: var(--navy); }
+  .win-body p{ margin: .5rem 0; max-width: 72ch; }
+  .kicker{ font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-faint); }
+  .statusbar{ display:flex; gap: 2px; font-size: 11px; color: var(--ink-soft); padding: 2px; border-top: 1px solid var(--line); background:#ece8dc; }
+  .statusbar span{ padding: .1rem .5rem; border:1px solid; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); }
+  .statusbar span:first-child{ flex:1; }
+
+  /* reveal on scroll */
+  .window{ opacity: 0; transform: translateY(14px); transition: opacity .5s ease, transform .5s ease; }
+  .window.in{ opacity: 1; transform: none; }
+
+  /* memo / paper */
+  .memo{
+    background: var(--paper); padding: 1rem 1.2rem; margin: .8rem 0; font-family: var(--mono); font-size: 13px;
+    box-shadow: 0 1px 0 #ddd, 0 2px 0 #fff, 0 3px 0 #d6d6d6, 2px 6px 10px rgba(0,0,0,.12);
+    border-top: 6px solid var(--navy);
+  }
+  .memo .memo-head{ display:grid; grid-template-columns: auto 1fr; gap: .1rem .8rem; border-bottom: 1px dashed var(--line); padding-bottom: .5rem; margin-bottom: .6rem; }
+  .memo .memo-head b{ font-weight: bold; }
+  .sticky{
+    background: var(--sticky); padding: .7rem .8rem; font-size: 13px; box-shadow: 2px 3px 6px rgba(0,0,0,.18);
+    transform: rotate(-1.2deg); max-width: 22rem; font-family: "Comic Sans MS", "Comic Neue", var(--ui);
+  }
+  .sticky.right{ transform: rotate(1.4deg); float: right; margin: 0 0 .8rem 1.2rem; }
+  @media (max-width: 600px){ .sticky.right{ float: none; margin: .6rem 0; } }
+  .fax{ clear: both; }
+
+  /* stat tiles: LCD readouts */
+  .tiles{ display:grid; grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr)); gap: .6rem; margin: 1rem 0; }
+  .tile{ background:#fff; padding: .55rem .6rem; text-align:center; }
+  .tile .n{ display:block; font-family: var(--mono); font-size: 1.45rem; font-weight: bold; color: var(--navy); }
+  .tile .l{ font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); }
+
+  /* headline answer */
+  .verdict{ display:grid; grid-template-columns: 1fr 1fr; gap: .8rem; margin: 1rem 0; }
+  @media (max-width: 600px){ .verdict{ grid-template-columns: 1fr; } }
+  .verdict .card{ background:#fff; padding: .8rem 1rem; border-left: 6px solid var(--green); }
+  .verdict .card.no{ border-left-color: var(--red); }
+  .verdict .big{ font-family: Georgia, serif; font-size: 1.25rem; }
+  .verdict .num{ font-family: var(--mono); font-size: 12px; color: var(--ink-soft); }
+
+  /* placeholder charts: paper feeding out of the fax */
+  .fax{ position: relative; background: #e9e5d8; padding: 14px 14px 0; margin: 1rem 0; overflow: hidden; }
+  .fax::before{ /* the fax slot */
+    content:""; position:absolute; left: 10px; right: 10px; top: 6px; height: 8px; background: #35383f; border-radius: 4px; z-index: 2;
+  }
+  .fax-sheet{
+    position: relative; background: var(--paper); min-height: 260px; margin: 0 6px; padding: 1.4rem 1rem 1rem;
+    border: 1px solid #d8d3c4; border-bottom: 0;
+    background-image: repeating-linear-gradient(0deg, transparent 0 23px, rgba(29,58,107,.06) 23px 24px);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; gap:.4rem;
+    color: var(--ink-faint); font-family: var(--mono); font-size: 12.5px;
+    transform: translateY(-100%); transition: transform 1.6s steps(14);
+  }
+  .fax.printed .fax-sheet{ transform: translateY(0); }
+  .fax-sheet .ph-title{ font-family: var(--ui); font-weight: bold; color: var(--navy); font-size: 14px; }
+  .fax-cap{ font-size: 12px; color: var(--ink-soft); margin: .3rem 0 0; padding: .4rem 6px .7rem; }
+
+  /* ------------------------------------------------------------ charts */
+  .fax-sheet.has-chart{ display:block; text-align:left; min-height: 0; padding: 1.1rem .9rem .8rem; color: var(--ink); font-family: var(--ui); }
+  .chart-title{ font-weight: bold; color: var(--navy); font-size: 13px; margin-bottom: .3rem; }
+  .chart{ width: 100%; position: relative; }
+  .chart svg{ display:block; width: 100%; height: auto; overflow: visible; }
+  .chart text{ font-family: var(--ui); font-size: 11px; fill: var(--ink-soft); }
+  .chart .axis path, .chart .axis line{ stroke: #cfc9b8; }
+  .chart .grid line{ stroke: #ece7da; }
+  .chart .grid path{ display:none; }
+  .chart .lbl{ fill: var(--ink); font-size: 11px; }
+  .chart .lbl.strong{ font-weight: bold; }
+  .chart .halo{ stroke: var(--paper); stroke-width: 3px; paint-order: stroke; stroke-linejoin: round; }
+  .tiny{ font-size: 11px; color: var(--ink-faint); margin: .3rem 0 0; }
+  .howto{ margin-top: .6rem; padding: .55rem .7rem; background: #fff; border: 1px solid #ddd8ca; border-left: 4px solid var(--navy); font-size: 12px; color: var(--ink-soft); line-height: 1.45; }
+  .howto:empty{ display: none; }
+  .howto .k{ font-size: 10px; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-faint); margin-bottom: .25rem; }
+  .howto .row{ display: grid; grid-template-columns: 18px 1fr; gap: .1rem .4rem; align-items: start; margin: .2rem 0; }
+  .howto .row > span:first-child{ padding-top: .25rem; }
+  .howto b{ color: var(--ink); }
+  .howto p{ margin: .35rem 0 0; }
+  .howto .sw{ display:inline-block; width: 11px; height: 11px; border-radius: 50%; border: 2px solid var(--paper); box-shadow: 0 0 0 1px rgba(0,0,0,.08); }
+  .howto .ln{ display:inline-block; width: 16px; height: 3px; border-radius: 2px; vertical-align: middle; }
+  .howto .bar{ display:inline-block; width: 12px; height: 10px; border-radius: 0 3px 3px 0; }
+  .howto .ramp{ display:inline-block; width: 80px; height: 8px; vertical-align: middle; margin: 0 .3rem; border-radius: 2px; }
+  .legend{ display:flex; flex-wrap: wrap; gap: .3rem 1rem; font-size: 11.5px; color: var(--ink-soft); margin-top: .4rem; align-items:center; }
+  .legend .sw{ display:inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: .3rem; vertical-align: -1px; }
+  .legend .ln{ display:inline-block; width: 16px; height: 2px; margin-right: .3rem; vertical-align: 3px; }
+  .legend .ramp{ display:inline-block; width: 90px; height: 8px; vertical-align: -1px; margin: 0 .3rem; border-radius: 2px; }
+  #tip{
+    position: fixed; z-index: 70; pointer-events: none; max-width: 260px;
+    background: #ffffe1; color: #000; border: 1px solid #000; padding: .3rem .45rem; font-size: 11.5px; line-height: 1.4;
+    box-shadow: 2px 2px 0 rgba(0,0,0,.25); opacity: 0; transition: opacity .1s;
+  }
+  #tip.on{ opacity: 1; }
+  #tip b{ color: var(--navy); }
+
+  .controls{ display:flex; flex-wrap: wrap; gap: .5rem 1rem; align-items:center; margin: .8rem 0 .2rem; font-size: 12px; }
+  .controls input[type=range]{ vertical-align: middle; width: 9rem; accent-color: var(--navy-2); }
+  .seg{ display:inline-flex; }
+  .seg .btn{ border-radius: 0; }
+  .seg .btn:first-child{ border-radius: 3px 0 0 3px; }
+  .seg .btn:last-child{ border-radius: 0 3px 3px 0; }
+  .btn.active, .chip-btn.active{ border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); background: #dbe5f7; font-weight: bold; }
+  .btn:disabled{ opacity: .55; cursor: default; }
+
+  .two-up{ display:grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .two-up.wide-left{ grid-template-columns: 1.6fr 1fr; }
+  .two-up .fax{ margin: .6rem 0; }
+  @media (max-width: 760px){ .two-up, .two-up.wide-left{ grid-template-columns: 1fr; } }
+
+  /* org chart + employee badge */
+  .org-wrap{ display:grid; grid-template-columns: minmax(0,1fr) 230px; gap: 12px; align-items: start; }
+  @media (max-width: 1000px){ .org-wrap{ grid-template-columns: 1fr; } }
+  .org-wrap .fax{ margin: .6rem 0; }
+  #chart-network .node{ cursor: pointer; }
+  #chart-network .node circle{ stroke: var(--paper); stroke-width: 2px; }
+  #chart-network .node.sel circle{ stroke: var(--ink); stroke-width: 2.5px; }
+  #chart-network .edge{ stroke-linecap: round; }
+  .badge-panel{
+    background: #fff; margin-top: .6rem; padding: 1.4rem .9rem .9rem; position: relative; font-size: 12px; min-height: 12rem;
+    border-radius: 6px;
+  }
+  .badge-panel::before{ /* lanyard clip */
+    content:""; position:absolute; top: 6px; left: 50%; width: 38px; height: 7px; margin-left: -19px; border-radius: 4px; background: #c8c2b2;
+  }
+  .badge-empty{ color: var(--ink-faint); text-align: center; padding-top: 2rem; }
+  .badge-top{ display:flex; gap: .6rem; align-items:center; border-bottom: 2px solid var(--navy); padding-bottom: .5rem; margin-bottom: .5rem; }
+  .badge-photo{ width: 46px; height: 46px; flex: none; border-radius: 4px; display:flex; align-items:center; justify-content:center; color:#fff; font-weight: bold; font-size: 1.1rem; }
+  .badge-name{ font-family: Georgia, serif; font-size: 1.15rem; line-height: 1.1; }
+  .badge-co{ font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); }
+  .badge-panel dl{ display:grid; grid-template-columns: auto 1fr; gap: .1rem .6rem; margin: .3rem 0 .5rem; }
+  .badge-panel dt{ color: var(--ink-faint); }
+  .badge-panel dd{ margin: 0; font-family: var(--mono); text-align: right; }
+  .badge-panel h4{ margin: .5rem 0 .2rem; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--navy); }
+  .badge-words{ display:flex; flex-wrap: wrap; gap: .25rem; }
+  .badge-words span{ background: #eef2fa; border: 1px solid #c9d6ee; padding: 0 .3rem; font-family: var(--mono); font-size: 11.5px; }
+  .badge-panel ol{ margin: 0; padding-left: 1.2rem; }
+
+  /* HR filing cabinet */
+  .hr-grid{ align-items: start; }
+  .cabinet{ background: #b9b4a5; padding: .5rem; margin: .6rem 0; }
+  .cabinet-head{ display:flex; justify-content: space-between; align-items:center; background: #e9e5d8; padding: .25rem .5rem; font-size: 12px; font-weight: bold; border: 1px solid #8d8776; }
+  .cabinet-list{ list-style: none; margin: .4rem 0 0; padding: 0; max-height: 360px; overflow-y: auto; display:flex; flex-direction:column; gap: .4rem; }
+  .cabinet-list li{ background: var(--paper); border: 1px solid #d8d3c4; padding: .45rem .6rem; font-size: 12px; position: relative; }
+  .cabinet-list .ep{ font-size: 10.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: .05em; }
+  .cabinet-list .setup{ color: var(--ink-soft); }
+  .cabinet-list mark{ background: #ffe9a8; padding: 0 .1rem; }
+  .cabinet-list .stamp{ position:absolute; right: .5rem; top: .35rem; color: var(--red); border: 2px solid var(--red); font-size: 9px; padding: 0 .25rem; transform: rotate(6deg); font-weight: bold; letter-spacing: .08em; }
+
+  /* sales chips */
+  .chips{ display:flex; flex-wrap: wrap; gap: .35rem; margin: .4rem 0; }
+  .chips span{ background: #fff; border: 1px solid var(--line); padding: .1rem .5rem; font-family: var(--mono); font-size: 12px; }
+  .chips span b{ color: var(--ink-faint); font-weight: normal; margin-left: .3rem; }
+  .chip-btn{ font-family: var(--ui); font-size: 12px; background: #fff; border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); padding: .15rem .55rem; cursor: pointer; border-radius: 3px; }
+
+  /* creed list */
+  .weird-list{ text-align: left; display: inline-block; margin: .4rem auto; padding-left: 1.6rem; color: #9f9; font-family: var(--mono); font-size: 13px; }
+  .weird-list li{ margin: .1rem 0; }
+  .weird-list .bar{ display:inline-block; height: 8px; background: #ff0; vertical-align: middle; margin: 0 .4rem; }
+  .weird-list li.creed{ color: #f0f; font-weight: bold; }
+
+  .finding{ background: #fff; border-left: 6px solid var(--gold); padding: .7rem 1rem; margin: .8rem 0; font-size: 13px; }
+
+  /* game */
+  .game{ background: #fff; padding: 1rem; margin: .8rem 0; }
+  .game-score{ display:flex; justify-content: space-between; align-items:center; gap: .5rem; background: #1b1b1b; color: #ffd84a; padding: .45rem .8rem; font-family: var(--mono); }
+  .game-score .score{ text-align:center; }
+  .game-score .kicker{ color: #bbb; display:block; }
+  .game-score b{ font-size: 1.5rem; }
+  .game-score .round{ font-size: 12px; color: #eee; }
+  .quote-card{
+    margin: 1rem 0; padding: 1rem 1.2rem; background: var(--paper); border-left: 6px solid var(--navy);
+    font-family: Georgia, serif; font-size: 1.15rem; line-height: 1.45; min-height: 4.5rem;
+  }
+  .quote-card .ep{ display:block; font-family: var(--ui); font-size: 11px; color: var(--ink-faint); margin-top: .4rem; }
+  .cast-grid{ display:grid; grid-template-columns: repeat(auto-fill, minmax(7.2rem, 1fr)); gap: .4rem; }
+  .cast-btn{
+    font-family: var(--ui); font-size: 12.5px; padding: .45rem .3rem; cursor: pointer; background: linear-gradient(#fbfaf6, #e4dfd2);
+    border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); border-radius: 3px; display:flex; align-items:center; gap: .4rem;
+  }
+  .cast-btn .ini{ width: 22px; height: 22px; border-radius: 3px; color:#fff; font-size: 10px; font-weight: bold; display:inline-flex; align-items:center; justify-content:center; flex: none; }
+  .cast-btn:disabled{ cursor: default; opacity: .6; }
+  .cast-btn.right{ opacity: 1; background: #d9f2d9; border-color: var(--green); }
+  .cast-btn.wrong{ opacity: 1; background: #f8d8d6; border-color: var(--red); }
+  .cast-btn.bot{ outline: 2px dashed var(--ink); outline-offset: 1px; }
+  .game-result{ margin-top: .8rem; font-size: 13px; min-height: 1.5rem; }
+  .game-result .bars{ margin-top: .3rem; }
+  .game-actions{ text-align: right; margin-top: .4rem; }
+
+  /* tables */
+  .grid-table{ width:100%; border-collapse: collapse; background:#fff; font-size: 12.5px; }
+  .grid-table th{ background: #e4dfd2; text-align:left; font-weight: normal; padding: .25rem .5rem; border:1px solid var(--line); }
+  .grid-table td{ padding: .25rem .5rem; border:1px solid #ddd8ca; font-family: var(--mono); }
+  .grid-table tr:nth-child(even) td{ background: #faf8f2; }
+  .table-scroll{ overflow-x: auto; }
+
+  /* HR complaint card */
+  .complaint{ background: #fff; border: 1px solid var(--line); padding: .6rem .8rem; font-size: 12.5px; position: relative; }
+  .complaint .stamp{ position:absolute; right: .6rem; top: .5rem; color: var(--red); border: 2px solid var(--red); font-size: 10px; padding: 0 .3rem; transform: rotate(6deg); font-weight: bold; letter-spacing: .08em; }
+
+  /* creed */
+  .geocities{
+    background: #000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='40' height='40'%3E%3Ctext x='4' y='20' font-size='10' fill='%23333'%3E%E2%98%85%3C/text%3E%3C/svg%3E");
+    color: #0f0; font-family: "Comic Sans MS", "Comic Neue", var(--ui); padding: 1rem 1.2rem; text-align: center;
+  }
+  .geocities h2{ color: #ff0; font-family: "Comic Sans MS", var(--ui); }
+  .geocities .rainbow{ background: linear-gradient(90deg, red, orange, yellow, lime, cyan, blue, magenta); -webkit-background-clip: text; background-clip: text; color: transparent; font-weight: bold; }
+  .geocities .construction{ display:inline-block; background: #fc0; color: #000; padding: .15rem .7rem; font-weight: bold; border: 5px solid; border-image: repeating-linear-gradient(45deg, #000 0 8px, #fc0 8px 16px) 5; }
+  .geocities p{ margin-left:auto; margin-right:auto; color: #9f9; }
+
+  /* footer */
+  .foot{ max-width: 1240px; margin: 0 auto; padding: 0 16px 2rem; font-size: 11px; color: var(--ink-soft); text-align:center; }
+  .foot .badges{ display:flex; gap: .5rem; justify-content:center; flex-wrap:wrap; margin: .5rem 0; }
+  .badge88{ width: 88px; height: 31px; display:inline-flex; align-items:center; justify-content:center; font-size: 9px; font-weight: bold; text-align:center; line-height:1.1; padding: 2px; border:1px solid #555; }
+
+  /* ------------------------------------------------------------ pop-ups and toasts */
+  #toasts{ position: fixed; right: 16px; bottom: 16px; z-index: 60; display:flex; flex-direction:column; gap: 8px; max-width: min(320px, calc(100vw - 32px)); }
+  .toast{ background: var(--panel); box-shadow: 0 8px 22px rgba(0,0,0,.3); animation: pop .25s ease-out; }
+  .toast .titlebar{ font-size: 11.5px; }
+  .toast .toast-body{ padding: .6rem .7rem; font-size: 12.5px; display:flex; gap:.6rem; align-items:flex-start; }
+  .toast .toast-body .big-ico{ font-size: 1.6rem; line-height:1; }
+  .toast .t-btns span{ cursor: pointer; }
+  @keyframes pop{ from{ transform: translateY(20px) scale(.96); opacity: 0; } }
+
+  /* fire drill */
+  #firedrill{ position: fixed; inset: 0; z-index: 90; pointer-events: none; display:none; }
+  body.fire #firedrill{ display:block; animation: alarm .5s steps(1) infinite; }
+  body.fire .window, body.fire .side-box{ animation: panic .18s linear infinite; }
+  body.fire .window:nth-child(even){ animation-direction: reverse; }
+  @keyframes alarm{ 0%{ background: rgba(255,0,0,.18);} 50%{ background: transparent; } }
+  @keyframes panic{ 0%{ transform: translate(0,0) rotate(0); } 25%{ transform: translate(-3px,1px) rotate(-.4deg);} 50%{ transform: translate(2px,-2px) rotate(.4deg);} 75%{ transform: translate(-1px,2px);} }
+  .fire-banner{ position: fixed; top: 40%; left: 50%; transform: translate(-50%,-50%); z-index: 91; background:#fff; border: 4px solid var(--red); padding: 1rem 1.4rem; font-weight: bold; text-align:center; font-size: 1.1rem; box-shadow: 0 10px 40px rgba(0,0,0,.5); max-width: calc(100vw - 32px); }
+
+  /* chili */
+  .chili-pot{ cursor: pointer; display:inline-block; font-size: 1.3rem; background: none; border: 0; padding: 0 .2rem; vertical-align: middle; }
+  .chili-pot.spilled{ animation: spill .6s ease-in forwards; }
+  @keyframes spill{ to{ transform: rotate(110deg) translate(6px,-4px); } }
+  .chili-puddle{ height: 0; background: radial-gradient(ellipse at top, #8a2b0e, #5e1a06); border-radius: 0 0 50% 50% / 0 0 100% 100%; transition: height 1.2s ease-out; margin-top: -2px; }
+  .chili-puddle.on{ height: 22px; }
+
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation: none !important; transition: none !important; }
+    .window{ opacity: 1; transform: none; }
+    .fax-sheet{ transform: none; }
+    .ticker-track{ transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================================================ LOGIN -->
+<div id="login" role="dialog" aria-modal="true" aria-labelledby="login-title">
+  <div class="login-box bevel">
+    <div class="login-banner">
+      <div class="dm" id="login-title">Dunder Mifflin</div>
+      <small>Paper Company, Inc. &middot; Scranton Branch &middot; Employee Intranet v2.3</small>
+    </div>
+    <div class="login-form">
+      <label for="login-user">User name:</label>
+      <div class="field inset" id="login-user" aria-live="polite"></div>
+      <label for="login-pass">Password:</label>
+      <div class="field inset" id="login-pass"></div>
+      <div class="login-hint" id="login-hint" hidden>
+        Password hint: <em>&ldquo;Same as last time. It&rsquo;s not &lsquo;password&rsquo;. It&rsquo;s &lsquo;password1&rsquo;.&rdquo;</em><br>
+        &mdash; M. Scott, Regional Manager
+      </div>
+      <div class="login-actions">
+        <button class="btn" type="button" id="login-hint-btn">Password hint</button>
+        <span>
+          <button class="btn" type="button" id="login-skip">Skip</button>
+          <button class="btn primary" type="button" id="login-go">Log on &rarr;</button>
+        </span>
+      </div>
+    </div>
+    <div class="login-legal">
+      Authorized personnel only. All activity on this system may be monitored by Corporate (and by Dwight).
+      A fan-made course project for DTU 02805 &mdash; not affiliated with NBC or any actual paper company.
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ TOOLBAR -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="wordmark" href="#announcements">Dunder Mifflin<small>Scranton Branch Intranet</small></a>
+    <div class="topbar-right">
+      <span class="who">Logged in as <b id="who">Michael Scott</b>, Regional Manager</span>
+      <span id="clock" aria-label="Current time">--:--</span>
+      <a href="../index.html" title="Back to The Wiki-Link Files">Log off &#9099;</a>
+    </div>
+  </div>
+  <div class="ticker" aria-hidden="true">
+    <div class="ticker-track">
+      <span><b>REMINDER:</b> Pretzel Day is Wednesday. The pretzel guy accepts cash only.</span>
+      <span><b>FACILITIES:</b> The kitchen fridge will be cleaned out Friday. Angela, your labels do not exempt you.</span>
+      <span><b>IT NOTICE:</b> 55,130 lines of transcript have been tokenized. Do not reply-all.</span>
+      <span><b>HR:</b> Please do not say &ldquo;that&rsquo;s what she said&rdquo; in the conference room. (Michael: 25 offenses on file.)</span>
+      <span><b>SAFETY:</b> Unscheduled fire drills are not permitted. This means you, Dwight.</span>
+      <span><b>ACCOUNTING:</b> Kevin&rsquo;s chili is not a company expense.</span>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ============================================================ SIDEBAR -->
+  <aside class="sidebar" aria-label="Intranet navigation">
+    <div class="side-box bevel">
+      <h3>Departments</h3>
+      <ul class="side-nav">
+        <li><a href="#announcements"><span class="ico">&#128226;</span>Announcements</a></li>
+        <li><a href="#quarterly"><span class="ico">&#128202;</span>Quarterly Word Report</a></li>
+        <li><a href="#orgchart"><span class="ico">&#128450;</span>Org Chart</a></li>
+        <li><a href="#accounting"><span class="ico">&#129518;</span>Accounting</a></li>
+        <li><a href="#hr"><span class="ico">&#128193;</span>HR Complaint Files</a></li>
+        <li><a href="#sales"><span class="ico">&#128200;</span>Sales Leads</a></li>
+        <li><a href="#reviews"><span class="ico">&#11088;</span>Performance Reviews</a></li>
+        <li><a href="#breakroom"><span class="ico">&#127918;</span>Break Room</a></li>
+        <li><a href="#memo"><span class="ico">&#128221;</span>Memo to Corporate</a></li>
+      </ul>
+    </div>
+
+    <div class="side-box bevel">
+      <h3>My Desk</h3>
+      <div class="desk">
+        <button type="button" id="jello" aria-label="A stapler in Jell-O. Poke it."><div class="jello"></div></button>
+        <button type="button" id="mug" aria-label="World's Best Boss mug"><div class="mug">WORLD&rsquo;S<br>BEST<br>BOSS</div></button>
+      </div>
+    </div>
+
+    <div class="side-box bevel">
+      <h3>Schrute Bucks</h3>
+      <div class="side-body">
+        <div class="bucks" id="bucks">SB$ 0</div>
+        <div style="color:var(--ink-faint)">Earned in the Break Room. Redeemable for nothing. Not convertible to Stanley Nickels.</div>
+        <div style="margin-top:.45rem">Easter eggs found: <span class="eggs-found" id="eggs">0 / 8</span></div>
+      </div>
+    </div>
+
+    <div class="side-box bevel side-stats">
+      <h3>Site Statistics</h3>
+      <div class="side-body">You are visitor<br><span class="counter" id="visitor">0000000</span></div>
+    </div>
+  </aside>
+
+  <!-- ============================================================ CONTENT -->
+  <main class="content" id="main" tabindex="-1">
+
+    <!-- ANNOUNCEMENTS / headline -->
+    <section class="window bevel" id="announcements" aria-labelledby="h-ann">
+      <div class="titlebar"><span class="t-ico">&#128226;</span><span class="t-name">Announcements &mdash; Week 05: From Language to Numbers</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="menubar" aria-hidden="true"><span><u>F</u>ile</span><span><u>E</u>dit</span><span><u>V</u>iew</span><span><u>F</u>avorites</span><span><u>H</u>elp</span></div>
+      <div class="win-body">
+        <div class="kicker">Week 05 &middot; 02805 Social Graphs and Interactions</div>
+        <h2 id="h-ann">Do the people who talk to each other also sound alike?</h2>
+        <p>
+          This week the course turned language into numbers: tokens, frequencies, Zipf, n-grams, collocations,
+          concordances and bag-of-words vectors. We pointed all of it at nine seasons of <em>The Office</em>,
+          every line of dialogue tagged with who said it, and wired the speakers into a network of who answers whom.
+          Then we asked one question: <strong>are conversation partners also linguistic neighbours?</strong>
+        </p>
+        <div class="tiles" id="tiles">
+          <div class="tile inset"><span class="n" data-stat="lines">&hellip;</span><span class="l">Lines of dialogue</span></div>
+          <div class="tile inset"><span class="n" data-stat="episodes">&hellip;</span><span class="l">Episodes</span></div>
+          <div class="tile inset"><span class="n" data-stat="tokens">&hellip;</span><span class="l">Spoken tokens</span></div>
+          <div class="tile inset"><span class="n" data-stat="types">&hellip;</span><span class="l">Word types</span></div>
+          <div class="tile inset"><span class="n" data-stat="speakers">&hellip;</span><span class="l">Speakers</span></div>
+          <div class="tile inset"><span class="n" data-stat="core">&hellip;</span><span class="l">Core cast analysed</span></div>
+        </div>
+        <div class="verdict">
+          <div class="card">
+            <div class="kicker">What they talk about</div>
+            <div class="big">Yes &mdash; talking partners share topics.</div>
+            <div class="num" id="verdict-content">&hellip;</div>
+          </div>
+          <div class="card no">
+            <div class="kicker">How they talk</div>
+            <div class="big">No &mdash; they don&rsquo;t share a style.</div>
+            <div class="num" id="verdict-style">&hellip;</div>
+          </div>
+        </div>
+        <div class="sticky">
+          Michael &amp; Dwight are the #1 talking pair in the building &mdash; and still talk about different things.
+          Scroll to the Org Chart. &mdash; P.
+        </div>
+      </div>
+      <div class="statusbar"><span>Done</span><span>Internet</span></div>
+    </section>
+
+    <!-- QUARTERLY WORD REPORT: tokenization + Zipf -->
+    <section class="window bevel" id="quarterly" aria-labelledby="h-q">
+      <div class="titlebar"><span class="t-ico">&#128202;</span><span class="t-name">Quarterly Word Report.xls</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="win-body">
+        <div class="kicker">Tokenization &middot; frequency &middot; Zipf&rsquo;s law</div>
+        <h2 id="h-q">Quarterly Word Report</h2>
+        <p>Before you can count words you have to decide what a word is. Every preprocessing step below changes the totals.</p>
+        <div class="table-scroll">
+          <table class="grid-table" id="pipeline-table">
+            <thead><tr><th>Pipeline step</th><th>Tokens</th><th>Types</th></tr></thead>
+            <tbody><tr><td colspan="3">Loading&hellip;</td></tr></tbody>
+          </table>
+        </div>
+        <div class="fax" data-chart="zipf">
+          <div class="fax-sheet has-chart">
+            <div class="chart-title">Word frequency vs. rank, both on log scales</div>
+            <div class="chart" id="chart-zipf" role="img" aria-label="Log-log plot of word frequency against rank for the whole Office corpus"></div>
+            <div class="howto" id="howto-zipf"></div>
+          </div>
+          <p class="fax-cap">Each dot is a word type. A straight line on log&ndash;log axes is a power law; the fitted slope (ranks 10&ndash;5,000) is <b id="zipf-slope">&hellip;</b>. Hover a dot to see the word.</p>
+        </div>
+      </div>
+      <div class="statusbar"><span>Sheet 1 of 1</span><span>NUM</span></div>
+    </section>
+
+    <!-- ORG CHART: headline figure -->
+    <section class="window bevel" id="orgchart" aria-labelledby="h-org">
+      <div class="titlebar"><span class="t-ico">&#128450;</span><span class="t-name">Org Chart (Unofficial) &mdash; DO NOT FORWARD</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="win-body">
+        <div class="kicker">Network &times; bag-of-words cosine similarity &middot; the headline</div>
+        <h2 id="h-org">Who talks to whom vs. who sounds like whom</h2>
+        <p>An edge is a conversational turn: one character speaks right after another in the same episode. Similarity is cosine between equal-size word samples, measured two ways: content words (TF-IDF) and function words (style).</p>
+        <div class="controls">
+          <label>Hide pairs with fewer than <b id="min-turns-out">80</b> turns
+            <input type="range" id="min-turns" min="1" max="300" step="1" value="80"></label>
+          <span class="seg" role="group" aria-label="Edge colour">
+            <button type="button" class="btn seg-btn active" data-edge="content">Colour: shared topics</button>
+            <button type="button" class="btn seg-btn" data-edge="style">Colour: shared style</button>
+          </span>
+        </div>
+        <div class="org-wrap">
+          <div class="fax" data-chart="network">
+            <div class="fax-sheet has-chart">
+              <div class="chart-title">The core cast: who answers whom</div>
+              <div class="chart" id="chart-network" role="img" aria-label="Network of the 27 core characters; edges are conversational turns, coloured by how similar the two characters' vocabularies are"></div>
+              <div class="howto" id="legend-network"></div>
+            </div>
+          </div>
+          <aside class="badge-panel bevel" id="badge" aria-live="polite">
+            <div class="badge-empty">Click a person on the org chart to pull their employee file.</div>
+          </aside>
+        </div>
+        <h3>The test: every pair, plotted</h3>
+        <p>Each dot is one of the 351 pairs of core characters. Left to right: how much more often they answer each other than random mixing predicts (&ldquo;lift&rdquo;, which stops Michael from winning every pair just by talking the most). Bottom to top: how alike their words are.</p>
+        <div class="controls">
+          <span class="seg" role="group" aria-label="Similarity measure">
+            <button type="button" class="btn seg-btn active" data-sim="content">Content words (TF-IDF)</button>
+            <button type="button" class="btn seg-btn" data-sim="style">Function words (style)</button>
+          </span>
+          <button type="button" class="btn primary" id="shuffle-btn">&#128256; Shuffle the name tags &times;1,000</button>
+        </div>
+        <div class="two-up">
+          <div class="fax" data-chart="scatter">
+            <div class="fax-sheet has-chart">
+              <div class="chart-title" id="scatter-title">Talk lift vs. content similarity</div>
+              <div class="chart" id="chart-scatter" role="img" aria-label="Scatter plot of conversational lift against vocabulary similarity for every pair of core characters"></div>
+              <div class="howto" id="howto-scatter"></div>
+            </div>
+          </div>
+          <div class="fax" data-chart="null">
+            <div class="fax-sheet has-chart">
+              <div class="chart-title">Would random name tags do as well?</div>
+              <div class="chart" id="chart-null" role="img" aria-label="Histogram of rank correlations obtained after shuffling character labels, with the observed correlation marked"></div>
+              <div class="howto" id="howto-null"></div>
+            </div>
+          </div>
+        </div>
+        <p class="fax-cap" id="shuffle-cap">Shuffling which name goes with which vocabulary keeps both networks intact but breaks any link between them. If the real &rho; sits far out in the tail of the shuffled ones, the link is real.</p>
+      </div>
+      <div class="statusbar"><span>Confidential</span><span>Corporate</span></div>
+    </section>
+
+    <!-- ACCOUNTING: vocabulary richness -->
+    <section class="window bevel" id="accounting" aria-labelledby="h-acc">
+      <div class="titlebar"><span class="t-ico">&#129518;</span><span class="t-name">Accounting &mdash; Vocabulary Ledger</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="win-body">
+        <div class="kicker">Type/token ratio &middot; Heaps&rsquo; law</div>
+        <h2 id="h-acc">Kevin&rsquo;s Law <button type="button" class="chili-pot" id="chili" aria-label="Kevin's famous chili">&#127858;</button></h2>
+        <div class="chili-puddle" id="chili-puddle" aria-hidden="true"></div>
+        <div class="sticky right">&ldquo;Why waste time say lot word when few word do trick?&rdquo; &mdash; K. Malone</div>
+        <p>Who actually uses the fewest different words? Counted at equal sample size, so big talkers don&rsquo;t win by default.</p>
+        <div class="fax" data-chart="vocab">
+          <div class="fax-sheet has-chart">
+            <div class="chart-title">The vocabulary ledger &mdash; smallest vocabulary at the top</div>
+            <div class="chart" id="chart-vocab" role="img" aria-label="Dot plot of distinct words per 2,000 tokens for each character, next to bars of average words per line"></div>
+            <div class="howto" id="howto-vocab"></div>
+          </div>
+          <p class="fax-cap">Left: distinct words in a random 2,000-token sample of each character&rsquo;s lines (average of 30 draws), so big talkers don&rsquo;t win by default. Right: average words per line.</p>
+        </div>
+        <h3>Heaps&rsquo; law: how fast does each vocabulary grow?</h3>
+        <div class="controls" id="heaps-chips" role="group" aria-label="Characters to compare (up to four)"></div>
+        <div class="fax" data-chart="heaps">
+          <div class="fax-sheet has-chart">
+            <div class="chart-title">Distinct words vs. words spoken, log&ndash;log</div>
+            <div class="chart" id="chart-heaps" role="img" aria-label="Heaps' law curves of vocabulary growth for selected characters"></div>
+            <div class="howto" id="legend-heaps"></div>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span>Balanced (mostly)</span><span>Kevin</span></div>
+    </section>
+
+    <!-- HR: concordance -->
+    <section class="window bevel" id="hr" aria-labelledby="h-hr">
+      <div class="titlebar"><span class="t-ico">&#128193;</span><span class="t-name">HR Complaint Files &mdash; T. Flenderson</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="win-body">
+        <div class="kicker">Concordance</div>
+        <h2 id="h-hr">Every &ldquo;that&rsquo;s what she said&rdquo;, in context</h2>
+        <p>A concordance shows a phrase with the line that set it up. Toby has kept a file.</p>
+        <div class="two-up hr-grid">
+          <div class="fax" data-chart="twss">
+            <div class="fax-sheet has-chart">
+              <div class="chart-title">Repeat offenders</div>
+              <div class="chart" id="chart-twss" role="img" aria-label="Bar chart of who says that's what she said"></div>
+              <div class="howto" id="howto-twss"></div>
+            </div>
+          </div>
+          <div class="cabinet bevel">
+            <div class="cabinet-head"><span id="cabinet-label">All complaints</span> <button type="button" class="btn" id="cabinet-reset" hidden>Show all</button></div>
+            <ol class="cabinet-list" id="twss-list"></ol>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar"><span id="twss-count">&hellip; complaints on file</span><span>HR</span></div>
+    </section>
+
+    <!-- SALES: collocations -->
+    <section class="window bevel" id="sales" aria-labelledby="h-sales">
+      <div class="titlebar"><span class="t-ico">&#128200;</span><span class="t-name">Sales Leads &mdash; Catchphrase Prospects Q3</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="win-body">
+        <div class="kicker">N-grams &middot; collocations (Dunning log-likelihood)</div>
+        <h2 id="h-sales">Catchphrases, found by the numbers</h2>
+        <p>Word pairs that turn up together far more often than chance predicts.</p>
+        <div class="fax" data-chart="colloc">
+          <div class="fax-sheet has-chart">
+            <div class="chart-title">Top word pairs by log-likelihood (G&sup2;), stopwords excluded</div>
+            <div class="chart" id="chart-colloc" role="img" aria-label="Bar chart of the strongest collocations in the show and the character who says each most"></div>
+          </div>
+          <p class="fax-cap">G&sup2; measures how surprised we should be to see the two words together this often if they were independent. Hover a bar for the top three speakers.</p>
+        </div>
+        <h3>Most common three-word phrases</h3>
+        <div class="chips" id="trigram-chips"></div>
+      </div>
+      <div class="statusbar"><span>Leads: hot</span><span>Sales</span></div>
+    </section>
+
+    <!-- CREED -->
+    <section class="window bevel" id="creed" aria-labelledby="h-creed">
+      <div class="titlebar"><span class="t-ico">&#127760;</span><span class="t-name">www.creedthoughts.gov.www/creedthoughts</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="geocities">
+        <span class="construction">&#9888; UNDER CONSTRUCTION &#9888;</span>
+        <h2 id="h-creed"><span class="rainbow">CREED THOUGHTS</span></h2>
+        <p>Who has the weirdest vocabulary in the building? I asked the computer. The computer said it was not me.</p>
+        <p>Which voice is furthest from everyone else&rsquo;s: <b id="weirdest">&hellip;</b></p>
+        <ol class="weird-list" id="weird-list"></ol>
+        <p id="creed-note"></p>
+      </div>
+      <div class="statusbar"><span>Done</span><span>Unknown Zone</span></div>
+    </section>
+
+    <!-- PERFORMANCE REVIEWS: ratings -->
+    <section class="window bevel" id="reviews" aria-labelledby="h-rev">
+      <div class="titlebar"><span class="t-ico">&#11088;</span><span class="t-name">Performance Reviews &mdash; Episode Ratings</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="win-body">
+        <div class="kicker">Text &times; IMDb ratings</div>
+        <h2 id="h-rev">Does the boss carry the branch?</h2>
+        <p>Across all 186 episodes, the more of the dialogue Michael speaks, the better the episode rates: <b id="rating-r">&hellip;</b>. That&rsquo;s a great headline, and a misleading one. Plot the episodes in airing order and you can see why.</p>
+        <div class="two-up wide-left">
+          <div class="fax" data-chart="ratings">
+            <div class="fax-sheet has-chart">
+              <div class="chart-title">IMDb rating of every episode, in airing order</div>
+              <div class="chart" id="chart-ratings" role="img" aria-label="IMDb rating of each episode in airing order, coloured by whether Michael appears"></div>
+              <div class="howto" id="legend-ratings"></div>
+            </div>
+          </div>
+          <div class="fax" data-chart="ratings2">
+            <div class="fax-sheet has-chart">
+              <div class="chart-title">Only the episodes Michael is in</div>
+              <div class="chart" id="chart-ratings2" role="img" aria-label="Scatter of Michael's share of dialogue against IMDb rating for episodes he appears in"></div>
+              <div class="howto" id="howto-ratings2"></div>
+            </div>
+          </div>
+        </div>
+        <div class="finding" id="ratings-note"></div>
+      </div>
+      <div class="statusbar"><span>186 reviews</span><span>Corporate</span></div>
+    </section>
+
+    <!-- BREAK ROOM: game -->
+    <section class="window bevel" id="breakroom" aria-labelledby="h-br">
+      <div class="titlebar"><span class="t-ico">&#127918;</span><span class="t-name">Break Room &mdash; Who Said It? (vs. Dwight)</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="win-body">
+        <div class="kicker">Bag-of-words classification, played against you</div>
+        <h2 id="h-br">Who Said It?</h2>
+        <p>Read a real line. Guess the speaker. Dwight guesses too, using cosine similarity against each character&rsquo;s word profile (built without the quote). Winner takes Schrute Bucks.</p>
+        <div class="game bevel" id="game">
+          <div class="game-score">
+            <div class="score"><span class="kicker">You</span><b id="score-you">0</b></div>
+            <div class="round" id="game-round">Round 1 of 10</div>
+            <div class="score"><span class="kicker">Dwight (bot)</span><b id="score-bot">0</b></div>
+          </div>
+          <blockquote class="quote-card" id="quote">&hellip;</blockquote>
+          <div class="cast-grid" id="cast-grid" role="group" aria-label="Who said it?"></div>
+          <div class="game-result" id="game-result" aria-live="polite"></div>
+          <div class="game-actions"><button type="button" class="btn primary" id="game-next" hidden>Next quote &rarr;</button></div>
+        </div>
+        <p class="fax-cap">The deck holds <span id="game-ready">&hellip;</span> lines from <span id="game-cast">&hellip;</span> characters. Across the whole deck the bot is right <b id="bot-acc">&hellip;</b> of the time; guessing at random scores <span id="bot-chance">&hellip;</span>.</p>
+      </div>
+      <div class="statusbar"><span>Break: 15 min</span><span>Vending machine: out of order</span></div>
+    </section>
+
+    <!-- MEMO: methods & limitations -->
+    <section class="window bevel" id="memo" aria-labelledby="h-memo">
+      <div class="titlebar"><span class="t-ico">&#128221;</span><span class="t-name">Memo to Corporate.doc</span><span class="t-btns" aria-hidden="true"><span>_</span><span>&#9633;</span><span>&times;</span></span></div>
+      <div class="win-body">
+        <h2 id="h-memo" class="sr-only">Methods and limitations</h2>
+        <div class="memo">
+          <div class="memo-head">
+            <b>TO:</b><span>Corporate (and the 02805 teaching team)</span>
+            <b>FROM:</b><span>Scranton branch &middot; C. Colberg, Y. Y. Hui, S. Jonsson</span>
+            <b>RE:</b><span>Methods, data, and what this can&rsquo;t tell you</span>
+          </div>
+          <p><b>Data.</b> Fan transcripts of <em>The Office</em> (US) as packaged by the
+          <a href="https://github.com/bradlindblad/schrute">schrute</a> project, re-parsed from its raw file (the tidy table cuts lines at colons);
+          IMDb ratings from <a href="https://github.com/rfordatascience/tidytuesday/tree/master/data/2020/2020-03-17">TidyTuesday 2020-03-17</a>.
+          Rebuild everything with <code>python tools/build_week5_analysis.py</code>.</p>
+          <p><b>Method.</b> Lines are lowercased and split into word tokens (apostrophes kept, so <i>that&rsquo;s</i> stays one token); bracketed stage directions are removed. The talk network links two characters each time one speaks directly after the other in the same episode. &ldquo;Lift&rdquo; divides that count by what random mixing of everyone&rsquo;s turns would predict. Similarity is cosine similarity between bag-of-words vectors from 30 random 2,000-token samples per character: TF-IDF over content words, or relative frequencies of the 179 NLTK stopwords for style. Significance comes from a Mantel-style test: shuffle the character labels on one matrix 1,999 times and count how often the shuffled Spearman &rho; is at least as large as the real one.</p>
+          <p><b>Limitations.</b></p>
+          <ul>
+            <li><b>No scene breaks.</b> &ldquo;Spoke right after&rdquo; is a stand-in for conversation. Cuts between talking heads and scene changes add some false edges.</li>
+            <li><b>Shared topics may partly be shared storylines.</b> Controlling for how many episodes two characters share leaves a partial &rho; of <span id="partial-rho">&hellip;</span>, so it isn&rsquo;t only that. But people in the same subplot talk about the same things, and we can&rsquo;t fully separate that from &ldquo;sounding alike&rdquo;.</li>
+            <li><b>Small n.</b> 27 characters give 351 pairs, but the pairs aren&rsquo;t independent (each character appears in 26 of them). That&rsquo;s why the test shuffles whole characters, not single pairs.</li>
+            <li><b>Fan transcripts.</b> Spellings vary (&ldquo;Bears. Beets.&rdquo; is written several ways), some speaker names have typos (we merged the obvious ones), and nothing was checked against the aired audio.</li>
+            <li><b>Ratings are confounded by era.</b> See Performance Reviews: the obvious result fell apart under one control.</li>
+            <li><b>The bot is deliberately simple.</b> Plain bag-of-words cosine is this week&rsquo;s method. A Naive Bayes model we tried did only slightly better (about 21%): sitcom lines are short, and most of their words are shared by everyone.</li>
+          </ul>
+        </div>
+      </div>
+      <div class="statusbar"><span>Page 1 of 1</span><span>Words: few</span></div>
+    </section>
+
+  </main>
+</div>
+
+<footer class="foot">
+  <div class="badges" aria-hidden="true">
+    <span class="badge88" style="background:#00337f;color:#fff">BEST VIEWED IN<br>INTERNET EXPLORER 6</span>
+    <span class="badge88" style="background:#fff;color:#000">800 &times; 600<br>RESOLUTION</span>
+    <span class="badge88" style="background:#c00;color:#ff0">MICHAEL SCOTT<br>PAPER COMPANY</span>
+  </div>
+  &copy; 2007 Dunder Mifflin Paper Company, Inc. (not really) &middot; A DTU 02805 course project by
+  <a href="../index.html">The Wiki-Link Files</a> &middot;
+  <a href="https://github.com/colberg00/colberg00.github.io">Source</a>
+</footer>
+
+<div id="toasts" aria-live="polite"></div>
+<div id="firedrill" aria-hidden="true"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<script src="../assets/week5.js?v=2"></script>
+<script src="../assets/week5-charts.js?v=6"></script>
+</body>
+</html>
