@@ -101,7 +101,7 @@
     if (booted) return;
     booted = true;
     const byName = new Map(d.characters.map((c) => [c.name, c]));
-    register(() => zipf(d));
+    zipfPanel(d);
     orgChart(d, byName);
     pairTest(d);
     register(() => vocab(d));
@@ -154,52 +154,127 @@
     show();
   }
 
-  // ================================================================== ZIPF
-  function zipf(d) {
-    const W = widthOf("#chart-zipf"), H = Math.min(340, Math.max(240, W * 0.5));
-    const m = { t: 24, r: 16, b: 36, l: 52 };
-    const svg = svgIn("#chart-zipf", W, H);
-    const pts = d.zipf.points;
-    const x = d3.scaleLog().domain([1, d3.max(pts, (p) => p[0])]).range([m.l, W - m.r]);
-    const y = d3.scaleLog().domain([1, d3.max(pts, (p) => p[1]) * 1.3]).range([H - m.b, m.t]);
-    const word = new Map(d.zipf.top.map((t, i) => [i + 1, t[0]]));
+  // ================================================================== ZIPF + PREPROCESSING TOGGLES
+  // Every on/off combination of the five steps is precomputed by the build
+  // script (pipeline_variants), keyed by five 0/1 characters in step order.
+  function zipfPanel(d) {
+    const V = d.pipeline_variants, steps = d.pipeline_steps;
+    const LABEL = {
+      lowercase: ["Lowercase", "The &rarr; the"],
+      strip_punct: ["Strip punctuation", "Jim. &rarr; Jim"],
+      drop_directions: ["Drop [stage directions]", "[laughs]"],
+      drop_stopwords: ["Remove stopwords", "the, I, you&hellip;"],
+      drop_filler: ["Remove spoken filler", "yeah, okay, oh"],
+    };
+    const RAW = "00000", OURS = "11100";
+    const raw = V[RAW];
+    let key = OURS;
+    const on = (s) => key[steps.indexOf(s)] === "1";
 
-    svg.append("g").attr("class", "grid").attr("transform", `translate(0,${H - m.b})`)
-      .call(d3.axisBottom(x).tickValues(decades(x)).tickSize(-(H - m.t - m.b)).tickFormat(""));
-    svg.append("g").attr("class", "grid").attr("transform", `translate(${m.l},0)`)
-      .call(d3.axisLeft(y).tickValues(decades(y)).tickSize(-(W - m.l - m.r)).tickFormat(""));
-    svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues(decades(x)).tickFormat(d3.format("~s")));
-    svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(decades(y)).tickFormat(d3.format("~s")));
-    svg.append("text").attr("x", W - m.r).attr("y", H - 4).attr("text-anchor", "end").text("rank (1 = most common word)");
-    svg.append("text").attr("x", 4).attr("y", 12).text("times used");
-
-    // fitted power law through the median-ish middle of the curve
-    const slope = d.zipf.slope;
-    const mid = pts.filter((p) => p[0] >= 10 && p[0] <= 5000);
-    const b = d3.mean(mid, (p) => Math.log10(p[1]) - slope * Math.log10(p[0]));
-    const f = (r) => Math.pow(10, b + slope * Math.log10(r));
-    svg.append("line").attr("x1", x(10)).attr("x2", x(5000)).attr("y1", y(f(10))).attr("y2", y(f(5000)))
-      .attr("stroke", C.orange).attr("stroke-width", 2).attr("stroke-linecap", "round");
-    svg.append("text").attr("class", "lbl halo").attr("x", x(300)).attr("y", y(f(300)) - 10)
-      .text(`fitted slope ${slope.toFixed(2)}`);
-
-    svg.append("g").selectAll("circle").data(pts).join("circle")
-      .attr("cx", (p) => x(p[0])).attr("cy", (p) => y(p[1])).attr("r", 4)
-      .attr("fill", C.blue).attr("stroke", PAPER).attr("stroke-width", 2)
-      .on("mousemove", (ev, p) => showTip(`${word.has(p[0]) ? `<b>&ldquo;${esc(word.get(p[0]))}&rdquo;</b><br>` : ""}rank ${fmt(p[0])} &middot; used ${fmt(p[1])}&times;`, ev))
-      .on("mouseleave", hideTip);
-
-    howto("#howto-zipf", [
-      [sw(C.blue), "<b>Blue dots</b>: words. A dot&rsquo;s position is its rank (1 = most used word) and how many times it is said in the whole show."],
-      [ln(C.orange), `<b>Orange line</b>: the best-fitting power law, frequency &prop; rank<sup>${slope.toFixed(2)}</sup>. That&rsquo;s Zipf&rsquo;s law.`],
-    ], `Read it as: the 10th most common word is said about ${Math.pow(2, -slope).toFixed(1)}&times; as often as the 20th. A handful of words (&ldquo;i&rdquo;, &ldquo;you&rdquo;, &ldquo;the&rdquo;) do most of the talking; the long tail on the right is thousands of words said only once or twice.`);
-
-    // name the top few words directly
-    [0, 1, 2].forEach((i) => {
-      const t = d.zipf.top[i];
-      svg.append("text").attr("class", "lbl halo").attr("x", x(i + 1)).attr("y", y(t[1]) + (i % 2 ? 18 : -9))
-        .attr("text-anchor", "middle").text(`“${t[0]}”`);
+    $("#pipe-toggles").innerHTML = steps.map((s) =>
+      `<button type="button" class="pipe-toggle" data-step="${s}" aria-pressed="false"><span class="led" aria-hidden="true"></span>${LABEL[s][0]} <small>${LABEL[s][1]}</small></button>`).join("");
+    $("#pipe-toggles").addEventListener("click", (e) => {
+      const b = e.target.closest(".pipe-toggle");
+      if (!b) return;
+      const i = steps.indexOf(b.dataset.step);
+      key = key.slice(0, i) + (key[i] === "1" ? "0" : "1") + key.slice(i + 1);
+      update(true);
     });
+    $$("[data-preset]").forEach((b) => b.addEventListener("click", () => { key = b.dataset.preset; update(true); }));
+
+    // fixed scales across all 32 settings, so the axes never jump
+    const all = Object.values(V);
+    const maxRank = d3.max(all, (v) => v.points[v.points.length - 1][0]);
+    const maxFreq = d3.max(all, (v) => v.points[0][1]);
+    let svg, x, y, W, H;
+    const m = { t: 24, r: 16, b: 36, l: 52 };
+
+    function frame() {
+      W = widthOf("#chart-zipf");
+      H = Math.min(340, Math.max(240, W * 0.5));
+      svg = svgIn("#chart-zipf", W, H);
+      x = d3.scaleLog().domain([1, maxRank]).range([m.l, W - m.r]);
+      y = d3.scaleLog().domain([1, maxFreq * 1.3]).range([H - m.b, m.t]);
+      svg.append("g").attr("class", "grid").attr("transform", `translate(0,${H - m.b})`)
+        .call(d3.axisBottom(x).tickValues(decades(x)).tickSize(-(H - m.t - m.b)).tickFormat(""));
+      svg.append("g").attr("class", "grid").attr("transform", `translate(${m.l},0)`)
+        .call(d3.axisLeft(y).tickValues(decades(y)).tickSize(-(W - m.l - m.r)).tickFormat(""));
+      svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues(decades(x)).tickFormat(d3.format("~s")));
+      svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(decades(y)).tickFormat(d3.format("~s")));
+      svg.append("text").attr("x", W - m.r).attr("y", H - 4).attr("text-anchor", "end").text("rank (1 = most common word)");
+      svg.append("text").attr("x", 4).attr("y", 12).text("times used");
+      svg.append("path").attr("class", "ref").attr("fill", "none").attr("stroke", NEUTRAL).attr("stroke-width", 2).attr("stroke-linejoin", "round");
+      svg.append("text").attr("class", "ref-lbl lbl halo");
+      svg.append("line").attr("class", "fit").attr("stroke", C.orange).attr("stroke-width", 2).attr("stroke-linecap", "round");
+      svg.append("text").attr("class", "fit-lbl lbl halo");
+      svg.append("g").attr("class", "dots");
+      svg.append("g").attr("class", "tops");
+    }
+
+    function fitOf(v) {
+      const mid = v.points.filter((p) => p[0] >= 10 && p[0] <= 5000);
+      const b = d3.mean(mid, (p) => Math.log10(p[1]) - v.slope * Math.log10(p[0]));
+      return (r) => Math.pow(10, b + v.slope * Math.log10(r));
+    }
+
+    function update(animate) {
+      const v = V[key];
+      const T = (sel) => (animate && !reduceMotion ? sel.transition().duration(650) : sel);
+
+      // grey reference: the raw text, so every change is visible against it
+      const refLine = d3.line().x((p) => x(p[0])).y((p) => y(p[1]));
+      svg.select(".ref").attr("d", refLine(raw.points)).attr("opacity", key === RAW ? 0 : 1);
+      const rEnd = raw.points[raw.points.length - 1];
+      svg.select(".ref-lbl").attr("x", x(rEnd[0]) - 4).attr("y", y(rEnd[1]) - 8).attr("text-anchor", "end")
+        .text(key === RAW ? "" : "raw text");
+
+      const f = fitOf(v);
+      T(svg.select(".fit")).attr("x1", x(10)).attr("x2", x(5000)).attr("y1", y(f(10))).attr("y2", y(f(5000)));
+      T(svg.select(".fit-lbl")).attr("x", x(300)).attr("y", y(f(300)) - 10);
+      svg.select(".fit-lbl").text(`fitted slope ${v.slope.toFixed(2)}`);
+
+      const dots = svg.select(".dots").selectAll("circle").data(v.points, (p, i) => i);
+      dots.exit().remove();
+      const entered = dots.enter().append("circle").attr("r", 4).attr("fill", C.blue).attr("stroke", PAPER).attr("stroke-width", 2)
+        .attr("cx", (p) => x(p[0])).attr("cy", (p) => y(p[1]));
+      T(entered.merge(dots)).attr("cx", (p) => x(p[0])).attr("cy", (p) => y(p[1]));
+      entered.merge(dots)
+        .on("mousemove", (ev, p) => showTip(`<b>&ldquo;${esc(p[2])}&rdquo;</b><br>rank ${fmt(p[0])} &middot; used ${fmt(p[1])}&times;`, ev))
+        .on("mouseleave", hideTip);
+
+      // rank 1 is labelled to its right (above it is the axis title), 2 below, 3 above
+      const tops = svg.select(".tops").selectAll("text").data(v.points.slice(0, 3), (p, i) => i).join("text")
+        .attr("class", "lbl halo").attr("text-anchor", (p, i) => (i === 0 ? "start" : "middle")).text((p) => `“${p[2]}”`);
+      T(tops).attr("x", (p, i) => x(p[0]) + (i === 0 ? 8 : 0)).attr("y", (p, i) => y(p[1]) + [4, 18, -9][i]);
+
+      // readout
+      const pct = (a, b) => (a === b ? "same as raw" : `${a > b ? "+" : "−"}${Math.abs(Math.round((a / b - 1) * 100))}% vs. raw`);
+      $("#pipe-tokens").textContent = fmt(v.tokens);
+      $("#pipe-types").textContent = fmt(v.types);
+      $("#zipf-slope").textContent = v.slope.toFixed(2);
+      $("#pipe-tokens-d").textContent = pct(v.tokens, raw.tokens);
+      $("#pipe-types-d").textContent = pct(v.types, raw.types);
+      $("#pipe-top").innerHTML = v.top.map(([w, n]) => `<span>${esc(w)}<b>${fmt(n)}</b></span>`).join("");
+      $$(".pipe-toggle").forEach((b) => b.setAttribute("aria-pressed", on(b.dataset.step)));
+      $$("[data-preset]").forEach((b) => b.classList.toggle("active", b.dataset.preset === key));
+
+      // what just happened, in words
+      const notes = [];
+      if (key === RAW) notes.push(`Raw text: &ldquo;Jim.&rdquo;, &ldquo;Jim,&rdquo; and &ldquo;jim&rdquo; all count as different types, which is why there are ${fmt(raw.types)} of them.`);
+      if (key === OURS) notes.push("&#9733; This is the setting the rest of the page counts with. The topic comparisons in the Org Chart then also remove stopwords and filler.");
+      if (on("drop_stopwords") && !on("lowercase")) notes.push("The stopword list is all lowercase, so capitalised <i>I</i>, <i>You</i> and <i>The</i> slip through. Turn on <b>Lowercase</b> and watch them go.");
+      if (on("drop_stopwords") && !on("strip_punct")) notes.push("Without stripping punctuation, <i>you?</i> and <i>the,</i> aren&rsquo;t on the stopword list either, so they survive.");
+      if (!on("drop_directions") && key !== RAW) notes.push("Stage directions are still in, so words like <i>laughs</i>, <i>walks</i> and <i>looks</i> are counted as if someone said them.");
+      $("#pipe-note").innerHTML = notes.join(" ");
+
+      howto("#howto-zipf", [
+        [sw(C.blue), "<b>Blue dots</b>: words under the current setting. Position = rank (1 = most used) and how many times it&rsquo;s said."],
+        [ln(C.orange), `<b>Orange line</b>: best-fitting power law, frequency &prop; rank<sup>${v.slope.toFixed(2)}</sup> (Zipf&rsquo;s law).`],
+        [ln(NEUTRAL), "<b>Grey line</b>: the raw text with no preprocessing, for comparison."],
+      ], `Read it as: the 10th most common word is said about ${Math.pow(2, -v.slope).toFixed(1)}&times; as often as the 20th. Removing stopwords chops off the top-left (the most common words), which flattens the curve; most of the long tail on the right barely moves.`);
+    }
+
+    register(() => { frame(); update(false); });
   }
 
   // ================================================================== ORG CHART
@@ -559,54 +634,142 @@
 
   function heaps(d) {
     const chars = d.characters;
-    const colorOf = new Map();
-    ["Michael", "Dwight", "Kevin", "Creed"].forEach((n, i) => colorOf.set(n, SLOTS[i]));
+    // Eight validated hues (adjacent CVD and normal-vision checks pass on the paper
+    // surface). A 9th+ line can't get a distinguishable hue, so it goes grey and
+    // relies on its direct label instead.
+    const PAL8 = [C.blue, C.orange, C.aqua, C.yellow, "#e87ba4", "#008300", "#4a3aa7", "#e34948"];
+    const GREY = "#a39e8e";
+    const picked = [];            // selection order
+    const colorOf = new Map();    // name -> hue, kept for as long as the name stays picked
+    const add = (n) => {
+      if (picked.includes(n)) return;
+      picked.push(n);
+      const used = new Set(colorOf.values());
+      const free = PAL8.find((c) => !used.has(c));
+      if (free) colorOf.set(n, free);
+    };
+    const remove = (n) => {
+      picked.splice(picked.indexOf(n), 1);
+      colorOf.delete(n);
+      // a freed hue goes to the earliest-picked grey line, so colours fill back up
+      const used = new Set(colorOf.values());
+      const free = PAL8.find((c) => !used.has(c));
+      const grey = picked.find((p) => !colorOf.has(p));
+      if (free && grey) colorOf.set(grey, free);
+    };
+    ["Michael", "Dwight", "Kevin", "Creed"].forEach(add);
+    let hover = null;
+
     const box = $("#heaps-chips");
-    box.innerHTML = chars.map((c) => `<button type="button" class="chip-btn" data-name="${esc(c.name)}" aria-pressed="false">${esc(c.name)}</button>`).join("");
+    box.innerHTML =
+      `<span class="heaps-actions"><button type="button" class="btn" data-heaps="all">Select all</button>` +
+      `<button type="button" class="btn" data-heaps="none">Clear</button></span>` +
+      chars.map((c) => `<button type="button" class="chip-btn" data-name="${esc(c.name)}" aria-pressed="false">${esc(c.name)}</button>`).join("");
     const sync = () => $$(".chip-btn", box).forEach((b) => {
-      const on = colorOf.has(b.dataset.name);
+      const n = b.dataset.name, on = picked.includes(n);
       b.classList.toggle("active", on);
       b.setAttribute("aria-pressed", on);
-      b.style.boxShadow = on ? `inset 4px 0 0 ${colorOf.get(b.dataset.name)}` : "";
+      b.style.boxShadow = on ? `inset 4px 0 0 ${colorOf.get(n) || GREY}` : "";
     });
     box.addEventListener("click", (e) => {
-      const b = e.target.closest(".chip-btn");
-      if (!b) return;
-      const n = b.dataset.name;
-      if (colorOf.has(n)) { if (colorOf.size > 1) colorOf.delete(n); }
-      else {
-        if (colorOf.size >= 4) { window.DM5 && window.DM5.toast("Accounting", "Four at a time, please. Oscar can only audit so many ledgers.", "\u{1F9EE}", 3500); return; }
-        const used = new Set(colorOf.values());
-        colorOf.set(n, SLOTS.find((s) => !used.has(s)));  // keeps everyone else's colour
+      const act = e.target.closest("[data-heaps]");
+      if (act) {
+        if (act.dataset.heaps === "all") chars.forEach((c) => add(c.name));
+        else { picked.length = 0; colorOf.clear(); }
+      } else {
+        const b = e.target.closest(".chip-btn");
+        if (!b) return;
+        const n = b.dataset.name;
+        if (picked.includes(n)) remove(n); else add(n);
       }
       sync();
       draw();
     });
+    // hovering a name button lights up that line
+    box.addEventListener("mouseover", (e) => { const b = e.target.closest(".chip-btn"); if (b && picked.includes(b.dataset.name)) { hover = b.dataset.name; emphasise(); } });
+    box.addEventListener("mouseout", (e) => { if (e.target.closest(".chip-btn")) { hover = null; emphasise(); } });
+
+    let svg;
+    function emphasise() {
+      if (!svg) return;
+      svg.selectAll(".hl-line").attr("opacity", (c) => (!hover || c.name === hover ? 1 : 0.15))
+        .attr("stroke-width", (c) => (c.name === hover ? 3 : 2));
+      svg.selectAll(".hl-end, .hl-lbl").attr("opacity", (c) => (!hover || c.name === hover ? 1 : 0.15));
+      if (hover) svg.selectAll(".hl-line").filter((c) => c.name === hover).raise();
+      const hc = hover && chars.find((c) => c.name === hover);
+      const hl = svg.select(".hover-lbl");
+      if (hc && !svg.selectAll(".hl-lbl").filter((c) => c.name === hover).size()) {
+        const xs = svg.node().__heapsX, ys = svg.node().__heapsY, e = hc.heaps[hc.heaps.length - 1];
+        hl.attr("x", xs(e[0]) + 7).attr("y", ys(e[1]) - 8).text(hc.name);
+      } else hl.text("");
+    }
 
     function draw() {
-      const W = widthOf("#chart-heaps"), H = Math.min(340, Math.max(240, W * 0.5));
-      const m = { t: 24, r: 70, b: 36, l: 52 };
-      const svg = svgIn("#chart-heaps", W, H);
-      const sel = chars.filter((c) => colorOf.has(c.name));
+      const W = widthOf("#chart-heaps"), H = Math.min(380, Math.max(260, W * 0.55));
+      const m = { t: 24, r: 78, b: 36, l: 52 };
+      svg = svgIn("#chart-heaps", W, H);
+      // grey lines underneath, coloured ones on top
+      const sel = chars.filter((c) => picked.includes(c.name))
+        .sort((a, b) => (colorOf.has(a.name) ? 1 : 0) - (colorOf.has(b.name) ? 1 : 0));
+      const col = (c) => colorOf.get(c.name) || GREY;
       const x = d3.scaleLog().domain([10, d3.max(chars, (c) => c.tokens)]).range([m.l, W - m.r]);
       const y = d3.scaleLog().domain([10, d3.max(chars, (c) => c.heaps[c.heaps.length - 1][1]) * 1.1]).range([H - m.b, m.t]);
+      svg.node().__heapsX = x;
+      svg.node().__heapsY = y;
       svg.append("g").attr("class", "grid").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(decades(y)).tickSize(-(W - m.l - m.r)).tickFormat(""));
       svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).tickValues(decades(x)).tickFormat(d3.format("~s")));
       svg.append("g").attr("class", "axis").attr("transform", `translate(${m.l},0)`).call(d3.axisLeft(y).tickValues(decades(y)).tickFormat(d3.format("~s")));
       svg.append("text").attr("x", W - m.r).attr("y", H - 4).attr("text-anchor", "end").text("words spoken so far");
       svg.append("text").attr("x", 4).attr("y", 12).text("distinct words");
+      if (!sel.length) {
+        svg.append("text").attr("x", (m.l + W - m.r) / 2).attr("y", H / 2).attr("text-anchor", "middle").text("Pick one or more names above");
+      }
       const line = d3.line().x((p) => x(p[0])).y((p) => y(p[1]));
-      sel.forEach((c) => {
-        const pts = c.heaps.filter((p) => p[0] >= 10);
-        svg.append("path").attr("d", line(pts)).attr("fill", "none").attr("stroke", colorOf.get(c.name))
-          .attr("stroke-width", 2).attr("stroke-linejoin", "round").attr("stroke-linecap", "round");
-        const end = pts[pts.length - 1];
-        svg.append("circle").attr("cx", x(end[0])).attr("cy", y(end[1])).attr("r", 4).attr("fill", colorOf.get(c.name)).attr("stroke", PAPER).attr("stroke-width", 2)
-          .on("mousemove", (ev) => showTip(`<b>${esc(c.name)}</b><br>${fmt(end[1])} distinct words in ${fmt(end[0])} spoken`, ev)).on("mouseleave", hideTip);
-        svg.append("text").attr("class", "lbl halo").attr("x", x(end[0]) + 7).attr("y", y(end[1]) + 4).text(c.name);
+      const ptsOf = (c) => c.heaps.filter((p) => p[0] >= 10);
+      const endOf = (c) => { const p = ptsOf(c); return p[p.length - 1]; };
+      const tip = (c) => `<b>${esc(c.name)}</b><br>${fmt(endOf(c)[1])} distinct words in ${fmt(endOf(c)[0])} spoken`;
+
+      svg.append("g").selectAll("path").data(sel).join("path").attr("class", "hl-line")
+        .attr("d", (c) => line(ptsOf(c))).attr("fill", "none").attr("stroke", col)
+        .attr("stroke-width", 2).attr("stroke-linejoin", "round").attr("stroke-linecap", "round");
+      // fat invisible copies are the hover targets; a 2px line is too thin to hit
+      svg.append("g").selectAll("path").data(sel).join("path")
+        .attr("d", (c) => line(ptsOf(c))).attr("fill", "none").attr("stroke", "transparent").attr("stroke-width", 12)
+        .style("cursor", "pointer")
+        .on("mouseenter", (ev, c) => { hover = c.name; emphasise(); })
+        .on("mousemove", (ev, c) => showTip(tip(c), ev))
+        .on("mouseleave", () => { hover = null; emphasise(); hideTip(); });
+      svg.append("g").selectAll("circle").data(sel).join("circle").attr("class", "hl-end")
+        .attr("cx", (c) => x(endOf(c)[0])).attr("cy", (c) => y(endOf(c)[1])).attr("r", 4)
+        .attr("fill", col).attr("stroke", PAPER).attr("stroke-width", 2);
+
+      // End labels: coloured lines claim space first (in pick order), then grey
+      // ones. A label may shift up to 16px to dodge; if there's still no room it
+      // is skipped, and that line shows its name on hover instead.
+      const order = sel.slice().sort((a, b) =>
+        (colorOf.has(b.name) - colorOf.has(a.name)) || (picked.indexOf(a.name) - picked.indexOf(b.name)));
+      const placed = [];
+      const clash = (l) => placed.some((p) => Math.abs(p.x - l.x) < 64 && Math.abs(p.y - l.y) < 12);
+      order.forEach((c) => {
+        const base = { c, x: x(endOf(c)[0]) + 7, y: y(endOf(c)[1]) + 4 };
+        for (const dy of [0, -12, 12, -16, 16]) {
+          const l = { ...base, y: base.y + dy };
+          if (!clash(l)) { placed.push(l); return; }
+        }
       });
-      howto("#legend-heaps", sel.map((c) => [ln(colorOf.get(c.name)), `<b>${esc(c.name)}</b>: ${fmt(c.heaps[c.heaps.length - 1][1])} distinct words after ${fmt(c.tokens)} spoken`]),
-        "Each line follows one character through the show: every time they speak, the line moves right, and it moves up only when they use a word they&rsquo;ve never said before. All lines bend the same way, which is Heaps&rsquo; law: vocabulary keeps growing, but more and more slowly. A line that sits higher is adding new words faster. Pick up to four names above; colours stay with the person.");
+      svg.append("g").selectAll("text").data(placed).join("text").attr("class", "lbl halo hl-lbl")
+        .attr("x", (l) => l.x).attr("y", (l) => l.y).text((l) => l.c.name)
+        .datum((l) => l.c);
+      // the hovered line always gets a label, even if it lost the space contest
+      svg.append("text").attr("class", "lbl strong halo hover-lbl").attr("pointer-events", "none");
+      emphasise();
+
+      const coloured = sel.filter((c) => colorOf.has(c.name)).sort((a, b) => picked.indexOf(a.name) - picked.indexOf(b.name));
+      const grey = sel.filter((c) => !colorOf.has(c.name));
+      howto("#legend-heaps",
+        coloured.map((c) => [ln(col(c)), `<b>${esc(c.name)}</b>: ${fmt(endOf(c)[1])} distinct words after ${fmt(c.tokens)} spoken`])
+          .concat(grey.length ? [[ln(GREY), `<b>Grey</b>: ${grey.map((c) => esc(c.name)).join(", ")}. Only eight colours stay tell-apart-able, so lines past the eighth are grey; hover a line or its name button to pick it out (and to see its name if there was no room for a label).`]] : []),
+        "Each line follows one character through the show: every time they speak, the line moves right, and it moves up only when they use a word they&rsquo;ve never said before. All lines bend the same way, which is Heaps&rsquo; law: vocabulary keeps growing, but more and more slowly. A line that sits higher is adding new words faster. Pick as many names as you like; each keeps its colour while selected.");
     }
     sync();
     register(draw);
@@ -664,12 +827,15 @@
     const rows = d.collocations.slice(0, 15);
     const W = widthOf("#chart-colloc");
     const narrow = W < 520;
-    const rowH = 24, m = { t: 4, r: narrow ? 46 : 150, b: 26, l: 124 };
+    const rowH = 24, m = { t: 4, r: narrow ? 46 : 150, b: 46, l: 124 };
     const H = m.t + rows.length * rowH + m.b;
     const svg = svgIn("#chart-colloc", W, H);
     const x = d3.scaleLinear().domain([0, d3.max(rows, (r) => r.g2)]).range([m.l, W - m.r]).nice();
     svg.append("g").attr("class", "grid").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(4).tickSize(-(rows.length * rowH)).tickFormat(""));
     svg.append("g").attr("class", "axis").attr("transform", `translate(0,${H - m.b})`).call(d3.axisBottom(x).ticks(4, "~s"));
+    svg.append("text").attr("class", "lbl strong").attr("x", m.l).attr("y", H - 6)
+      .text(narrow ? "G² score: higher = stronger pair →" : "G² (log-likelihood score): higher = the two words stick together more than chance →");
+    svg.append("text").attr("class", "lbl strong").attr("x", m.l - 8).attr("y", H - 6).attr("text-anchor", "end").text("word pair");
     const g = svg.append("g").selectAll("g").data(rows).join("g").attr("transform", (r, i) => `translate(0,${m.t + i * rowH + rowH / 2})`);
     g.append("rect").attr("x", 0).attr("width", W).attr("y", -rowH / 2).attr("height", rowH).attr("fill", "transparent");
     g.append("text").attr("class", "lbl").attr("x", m.l - 8).attr("dy", "0.35em").attr("text-anchor", "end").style("font-family", "var(--mono)").text((r) => r.phrase);

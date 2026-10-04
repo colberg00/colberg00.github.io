@@ -186,6 +186,46 @@ def g2(k11, k12, k21, k22):
     return 2 * (h(k11, k12, k21, k22) - h(k11 + k12, k21 + k22) - h(k11 + k21, k12 + k22))
 
 
+PIPELINE_STEPS = ["lowercase", "strip_punct", "drop_directions", "drop_stopwords", "drop_filler"]
+WORD_RE = re.compile(r"[A-Za-z]+(?:'[A-Za-z]+)?")
+
+
+def pipeline_variants(lines):
+    """Every on/off combination of the five preprocessing steps, for the page's toggles.
+
+    Key = five 0/1 characters in PIPELINE_STEPS order. Steps are applied literally,
+    so their interactions show up: the stopword list is lowercase, so without the
+    lowercase step "The" and "I" survive stopword removal; without stripping
+    punctuation, "the," isn't "the" either.
+    """
+    out = {}
+    for mask in range(32):
+        on = {s: bool(mask >> (4 - i) & 1) for i, s in enumerate(PIPELINE_STEPS)}
+        c = Counter()
+        for ln in lines:
+            t = ln["text"] if on["drop_directions"] else ln["raw"]
+            t = t.replace("’", "'")
+            if on["lowercase"]:
+                t = t.lower()
+            toks = WORD_RE.findall(t) if on["strip_punct"] else t.split()
+            if on["drop_stopwords"]:
+                toks = [w for w in toks if w not in STOPWORDS]
+            if on["drop_filler"]:
+                toks = [w for w in toks if w not in FILLER]
+            c.update(toks)
+        ranked = c.most_common()
+        f = np.array([n for _, n in ranked], dtype=float)
+        r = np.arange(1, len(f) + 1)
+        m = (r >= 10) & (r <= 5000)
+        slope = float(np.polyfit(np.log10(r[m]), np.log10(f[m]), 1)[0])
+        idx = np.unique(np.round(np.logspace(0, math.log10(len(f)), 60)).astype(int) - 1)
+        key = "".join("1" if on[s] else "0" for s in PIPELINE_STEPS)
+        out[key] = {"tokens": int(f.sum()), "types": len(ranked), "slope": round(slope, 3),
+                    "points": [[int(i + 1), int(ranked[i][1]), ranked[i][0]] for i in idx],
+                    "top": [[w, n] for w, n in ranked[:10]]}
+    return out
+
+
 # --------------------------------------------------------------------------- main
 
 def main():
@@ -497,6 +537,8 @@ def main():
                  # word lists, so the page can colour a line by content vs function words
                  "stopwords": sorted(STOPWORDS), "filler": sorted(FILLER - STOPWORDS)},
         "pipelines": pipelines,
+        "pipeline_steps": PIPELINE_STEPS,
+        "pipeline_variants": pipeline_variants(lines),
         "zipf": {"points": zipf_all, "slope": zipf_slope, "top": top_words},
         "characters": characters,
         "pairs": pairs,

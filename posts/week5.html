@@ -275,6 +275,28 @@
   .two-up .fax{ margin: .6rem 0; }
   @media (max-width: 760px){ .two-up, .two-up.wide-left{ grid-template-columns: 1fr; } }
 
+  /* preprocessing toggles */
+  .pipe-panel{ background: #fff; padding: .7rem .9rem .8rem; margin: .8rem 0; }
+  .pipe-head{ display:flex; justify-content: space-between; align-items:center; gap: .5rem; flex-wrap: wrap; }
+  .pipe-presets{ display:flex; gap: .3rem; flex-wrap: wrap; }
+  .pipe-toggles{ display:flex; flex-wrap: wrap; gap: .4rem; margin: .6rem 0; }
+  .pipe-toggle{
+    font-family: var(--ui); font-size: 12.5px; cursor: pointer; display:inline-flex; align-items:center; gap: .45rem;
+    padding: .35rem .65rem; border-radius: 3px; background: linear-gradient(#fbfaf6, #e4dfd2);
+    border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi);
+  }
+  .pipe-toggle .led{ width: 10px; height: 10px; border-radius: 50%; background: #c9c3b3; box-shadow: inset 0 1px 2px rgba(0,0,0,.3); }
+  .pipe-toggle[aria-pressed="true"]{ background: #dbe5f7; border-color: var(--bevel-lo) var(--bevel-hi) var(--bevel-hi) var(--bevel-lo); font-weight: bold; }
+  .pipe-toggle[aria-pressed="true"] .led{ background: #3fbf4f; box-shadow: 0 0 5px #3fbf4f; }
+  .pipe-toggle small{ font-weight: normal; color: var(--ink-faint); }
+  .pipe-readout{ display:grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; }
+  @media (max-width: 520px){ .pipe-readout{ grid-template-columns: 1fr 1fr; } }
+  .pipe-readout .tile .d{ display:block; font-size: 10.5px; color: var(--ink-faint); font-family: var(--mono); min-height: 1.2em; }
+  .pipe-top{ margin-top: .6rem; display:flex; flex-wrap: wrap; align-items: center; gap: .3rem; }
+  .pipe-top .chips{ margin: 0; }
+  .pipe-note{ margin-top: .5rem; font-size: 12px; background: #fdf6d3; border: 1px solid #e6d78f; padding: .4rem .6rem; }
+  .pipe-note:empty{ display:none; }
+
   /* stopwords vs content words explainer */
   .explainer{ background: #fff; padding: .9rem 1rem 1rem; margin: 1rem 0 .4rem; }
   .ex-line{ background: var(--paper); border: 1px dashed var(--line); padding: .7rem .9rem; margin: .4rem 0 .8rem; }
@@ -337,6 +359,7 @@
   .chips{ display:flex; flex-wrap: wrap; gap: .35rem; margin: .4rem 0; }
   .chips span{ background: #fff; border: 1px solid var(--line); padding: .1rem .5rem; font-family: var(--mono); font-size: 12px; }
   .chips span b{ color: var(--ink-faint); font-weight: normal; margin-left: .3rem; }
+  .heaps-actions{ display:inline-flex; gap: .3rem; margin-right: .4rem; }
   .chip-btn{ font-family: var(--ui); font-size: 12px; background: #fff; border: 2px solid; border-color: var(--bevel-hi) var(--bevel-lo) var(--bevel-lo) var(--bevel-hi); padding: .15rem .55rem; cursor: pointer; border-radius: 3px; }
 
   /* creed list */
@@ -581,20 +604,31 @@
       <div class="win-body">
         <div class="kicker">Tokenization &middot; frequency &middot; Zipf&rsquo;s law</div>
         <h2 id="h-q">Quarterly Word Report</h2>
-        <p>Before you can count words you have to decide what a word is. Every preprocessing step below changes the totals.</p>
-        <div class="table-scroll">
-          <table class="grid-table" id="pipeline-table">
-            <thead><tr><th>Pipeline step</th><th>Tokens</th><th>Types</th></tr></thead>
-            <tbody><tr><td colspan="3">Loading&hellip;</td></tr></tbody>
-          </table>
+        <p>Before you can count words you have to decide what a word is. Switch the preprocessing steps on and off: the counts, the most common words and the Zipf plot all update. Every combination is counted for real on all 55,130 lines.</p>
+        <div class="pipe-panel bevel">
+          <div class="pipe-head">
+            <span class="kicker">Preprocessing steps</span>
+            <span class="pipe-presets">
+              <button type="button" class="btn" data-preset="00000">Raw text</button>
+              <button type="button" class="btn" data-preset="11100">&#9733; Our setting</button>
+              <button type="button" class="btn" data-preset="11111">Everything on</button>
+            </span>
+          </div>
+          <div class="pipe-toggles" id="pipe-toggles" role="group" aria-label="Preprocessing steps"></div>
+          <div class="pipe-readout">
+            <div class="tile inset"><span class="n" id="pipe-tokens">&hellip;</span><span class="l">Tokens</span><span class="d" id="pipe-tokens-d"></span></div>
+            <div class="tile inset"><span class="n" id="pipe-types">&hellip;</span><span class="l">Types (distinct)</span><span class="d" id="pipe-types-d"></span></div>
+            <div class="tile inset"><span class="n" id="zipf-slope">&hellip;</span><span class="l">Zipf slope</span><span class="d">ranks 10&ndash;5,000</span></div>
+          </div>
+          <div class="pipe-top"><span class="kicker">Top 10 words now:</span> <span class="chips" id="pipe-top"></span></div>
+          <div class="pipe-note" id="pipe-note" aria-live="polite"></div>
         </div>
         <div class="fax" data-chart="zipf">
           <div class="fax-sheet has-chart">
             <div class="chart-title">Word frequency vs. rank, both on log scales</div>
-            <div class="chart" id="chart-zipf" role="img" aria-label="Log-log plot of word frequency against rank for the whole Office corpus"></div>
+            <div class="chart" id="chart-zipf" role="img" aria-label="Log-log plot of word frequency against rank; it updates when the preprocessing steps change"></div>
             <div class="howto" id="howto-zipf"></div>
           </div>
-          <p class="fax-cap">Each dot is a word type. A straight line on log&ndash;log axes is a power law; the fitted slope (ranks 10&ndash;5,000) is <b id="zipf-slope">&hellip;</b>. Hover a dot to see the word.</p>
         </div>
       </div>
       <div class="statusbar"><span>Sheet 1 of 1</span><span>NUM</span></div>
@@ -701,7 +735,7 @@
           <p class="fax-cap">Left: distinct words in a random 2,000-token sample of each character&rsquo;s lines (average of 30 draws), so big talkers don&rsquo;t win by default. Right: average words per line.</p>
         </div>
         <h3>Heaps&rsquo; law: how fast does each vocabulary grow?</h3>
-        <div class="controls" id="heaps-chips" role="group" aria-label="Characters to compare (up to four)"></div>
+        <div class="controls" id="heaps-chips" role="group" aria-label="Characters to compare"></div>
         <div class="fax" data-chart="heaps">
           <div class="fax-sheet has-chart">
             <div class="chart-title">Distinct words vs. words spoken, log&ndash;log</div>
@@ -870,7 +904,7 @@
 <div id="firedrill" aria-hidden="true"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
-<script src="../assets/week5.js?v=3"></script>
-<script src="../assets/week5-charts.js?v=8"></script>
+<script src="../assets/week5.js?v=4"></script>
+<script src="../assets/week5-charts.js?v=11"></script>
 </body>
 </html>

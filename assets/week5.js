@@ -244,11 +244,6 @@
     $("#verdict-content").textContent = `content words (stopwords removed): ρ = ${rho(t.content.rho_lift)}, p = ${t.content.p_lift}`;
     $("#verdict-style").textContent = `stopwords only: ρ = ${rho(t.style.rho_lift)}, p = ${t.style.p_lift}`;
 
-    $("#pipeline-table tbody").innerHTML = d.pipelines
-      .map((p) => `<tr><td>${p.name}</td><td>${fmt(p.tokens)}</td><td>${fmt(p.types)}</td></tr>`)
-      .join("");
-    $("#zipf-slope").textContent = d.zipf.slope.toFixed(2);
-
     $("#twss-count").textContent = `${d.twss.length} complaints on file`;
 
     const weird = d.characters.slice().sort((a, b) => a.mean_content_sim - b.mean_content_sim)[0];
